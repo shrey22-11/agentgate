@@ -41,11 +41,11 @@ services:
 
       # --- AI (Anthropic) — disabled until a real key is set in the dashboard ---
       - key: AI_ENABLED
-        value: "false"
+        value: "true"
       - key: ANTHROPIC_API_KEY
-        value: sk-ant-placeholder-set-a-real-key-in-the-render-dashboard
+        sync: false
       - key: AI_MODEL
-        value: claude-opus-5
+        value: claude-sonnet-4-5
       - key: AI_REQUEST_TIMEOUT_SECONDS
         value: "20"
       - key: AI_PARSE_CONFIDENCE_THRESHOLD
