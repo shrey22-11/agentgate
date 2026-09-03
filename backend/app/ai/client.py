@@ -10,11 +10,46 @@ router turns into HTTP 503.
 """
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from app.ai.schemas import ParsedIntent
 from app.core.config import get_settings
+
+_log = logging.getLogger("agentgate.ai")
+
+# Anything shaped like an Anthropic API key, scrubbed from anything we log or
+# surface. The SDK's exception objects do not carry the key or request headers,
+# but this is a cheap defensive guarantee.
+_SECRET_RE = re.compile(r"sk-ant-[A-Za-z0-9_\-]+")
+
+
+def _safe_provider_error(exc: BaseException) -> str:
+    """A log-safe one-line description of an Anthropic SDK exception: class name,
+    HTTP status (if an APIStatusError), and the API's own error message/body —
+    with any key-shaped token scrubbed and the whole thing length-capped. Never
+    touches request headers."""
+    parts = [type(exc).__name__]
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"HTTP {status}")
+
+    detail: Any = None
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        detail = (err.get("message") or err.get("type")) if isinstance(err, dict) else body
+    if not detail:
+        detail = str(exc)
+
+    text = _SECRET_RE.sub("sk-ant-***", str(detail)).strip()
+    if len(text) > 800:
+        text = text[:800] + " ...(truncated)"
+    if text:
+        parts.append(text)
+    return " | ".join(parts)
 
 _SYSTEM_PROMPT = """\
 You extract structured commercial shopping intent from a single user message \
@@ -105,9 +140,9 @@ class AnthropicParserClient:
                 output_format=ParsedIntent,
             )
         except Exception as exc:  # noqa: BLE001 — deliberate boundary normalisation
-            raise AIUnavailableError(
-                f"anthropic call failed: {type(exc).__name__}"
-            ) from exc
+            detail = _safe_provider_error(exc)
+            _log.warning("anthropic messages.parse failed (model=%s): %s", self._model, detail)
+            raise AIUnavailableError(f"anthropic call failed: {detail}") from exc
 
         parsed = response.parsed_output
         if parsed is None:
@@ -221,9 +256,9 @@ class AnthropicBuyerClient:
                 messages=messages,
             )
         except Exception as exc:  # noqa: BLE001 — deliberate boundary normalisation
-            raise AIUnavailableError(
-                f"anthropic buyer call failed: {type(exc).__name__}"
-            ) from exc
+            detail = _safe_provider_error(exc)
+            _log.warning("anthropic buyer messages.create failed (model=%s): %s", self._model, detail)
+            raise AIUnavailableError(f"anthropic buyer call failed: {detail}") from exc
 
         text_parts = [b.text for b in response.content if b.type == "text"]
         tool_calls = [

@@ -22,15 +22,35 @@ import uuid
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
 
 from app.action_requests.schemas import ActionDecisionResponse
 
 
 class ParsedIntent(BaseModel):
-    """The constrained structured output returned by the model."""
+    """Structured shopping intent extracted from one user message."""
 
     model_config = ConfigDict(extra="forbid")
+
+    # The fields below are optional in Python (their defaults keep every existing
+    # caller and app.ai.parser working — an unstated value is None). But the JSON
+    # schema handed to Anthropic's structured-output call
+    # (client.messages.parse(..., output_format=ParsedIntent)) must be *strict*:
+    # additionalProperties=false AND every property listed in `required`.
+    # Pydantic omits defaulted fields from `required`, and the API then rejects
+    # the request with BadRequestError (HTTP 400). This hook tightens only the
+    # emitted schema; on the wire an unstated value is still JSON null.
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        schema = handler(core_schema)
+        schema = handler.resolve_ref_schema(schema)
+        schema["required"] = list(schema.get("properties", {}))
+        schema["additionalProperties"] = False
+        return schema
 
     is_purchase_request: bool = Field(
         description="True only if the user is actually asking to buy a product."

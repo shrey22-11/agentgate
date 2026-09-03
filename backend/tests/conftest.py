@@ -37,6 +37,14 @@ os.environ.setdefault("AI_MODEL", "claude-sonnet-4-5")
 os.environ.setdefault("RAZORPAY_KEY_ID", "rzp_test_dummy")
 os.environ.setdefault("RAZORPAY_KEY_SECRET", "dummy_secret")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "dummy_webhook_secret")
+# Hard-set (not setdefault): the suite runs entirely against fakes and must
+# never make a real Anthropic / Razorpay call, even when a developer's
+# repo-root .env has AI_ENABLED=true / RAZORPAY_ENABLED=true for live testing.
+# Real env vars take precedence over the .env file in pydantic-settings, so
+# this cleanly overrides it. Tests that need the enabled path build a Settings
+# instance explicitly.
+os.environ["AI_ENABLED"] = "false"
+os.environ["RAZORPAY_ENABLED"] = "false"
 
 # --- fixtures -------------------------------------------------------------
 import pytest  # noqa: E402

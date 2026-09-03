@@ -457,6 +457,57 @@ async def test_anthropic_client_normalises_sdk_exception() -> None:
         await c.parse_intent(raw_input="hi")
 
 
+def test_parsedintent_json_schema_is_anthropic_strict() -> None:
+    """Anthropic structured outputs require a *strict* schema: every property in
+    `required`, and additionalProperties=false. Pydantic drops defaulted fields
+    from `required` — the schema hook must add them back, or the real
+    `messages.parse` call 400s with BadRequestError (regression guard)."""
+    from pydantic import TypeAdapter
+
+    schema = TypeAdapter(ParsedIntent).json_schema()
+    assert set(schema["required"]) == set(schema["properties"]), (
+        "structured outputs needs every property listed in `required`"
+    )
+    assert schema["additionalProperties"] is False
+    # optionals must survive as nullable, not vanish
+    assert {"type": "null"} in schema["properties"]["notes"]["anyOf"]
+    # and the model is still ergonomic to build with defaults
+    ParsedIntent(is_purchase_request=True)
+
+
+async def test_anthropic_client_error_detail_is_logged_safely(caplog) -> None:
+    """A provider BadRequestError must reach the logs with type + HTTP status +
+    the API's message, and must NOT leak anything key-shaped."""
+
+    class _FakeBadRequest(Exception):
+        status_code = 400
+        body = {"error": {"type": "invalid_request_error",
+                          "message": "output_config.format.schema: required must list every property "
+                                     "(token sk-ant-leak12345 must be scrubbed)"}}
+
+    class _Stub:
+        class messages:  # noqa: N801
+            @staticmethod
+            async def parse(**_):
+                raise _FakeBadRequest("Error code: 400")
+
+    c = AnthropicParserClient(api_key="sk-ant-realkey-xxxxx", model="claude-sonnet-4-5-20250929",
+                              timeout_seconds=1, _client=_Stub())
+    with caplog.at_level("WARNING", logger="agentgate.ai"):
+        with pytest.raises(AIUnavailableError) as ei:
+            await c.parse_intent(raw_input="hi")
+
+    msg = str(ei.value)
+    assert "_FakeBadRequest" in msg and "HTTP 400" in msg
+    assert "required must list every property" in msg
+    logged = caplog.text
+    assert "output_config.format.schema" in logged
+    # key-shaped tokens scrubbed everywhere; the real api_key never appears
+    assert "sk-ant-realkey" not in logged and "sk-ant-realkey" not in msg
+    assert "sk-ant-leak12345" not in logged and "sk-ant-leak12345" not in msg
+    assert "sk-ant-***" in logged
+
+
 def test_settings_reject_ai_enabled_with_placeholder_key() -> None:
     with pytest.raises(Exception):
         Settings(

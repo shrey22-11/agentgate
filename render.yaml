@@ -45,7 +45,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: AI_MODEL
-        value: claude-sonnet-4-5
+        value: claude-sonnet-4-5-20250929
       - key: AI_REQUEST_TIMEOUT_SECONDS
         value: "20"
       - key: AI_PARSE_CONFIDENCE_THRESHOLD
