@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentgate
+      POSTGRES_PASSWORD: agentgate_local_dev
+      POSTGRES_DB: agentgate
+    ports:
+      # Host port 5544, not 5432: a common developer setup already runs a
+      # native PostgreSQL on 5432, and on Windows both can bind 0.0.0.0:5432
+      # with the OS silently routing localhost to the native one. Mapping to
+      # 5544 avoids the collision. The container still listens on 5432
+      # internally, so the `app` service's `db:5432` is unaffected.
+      - "5544:5432"
+    volumes:
+      - agentgate_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentgate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agentgate:agentgate_local_dev@db:5432/agentgate
+      # entrypoint.sh applies migrations on start (RUN_MIGRATIONS_ON_START
+      # defaults to true) and seeds the SIMULATED demo data once. Both are
+      # idempotent; `python -m app.seed --reset` still works for a fresh set.
+      SEED_ON_START: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  agentgate_pgdata:

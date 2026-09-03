@@ -1,0 +1,71 @@
+# Render Blueprint — deploys AgentGate as one Docker web service + a managed
+# PostgreSQL 16 instance, with automatic HTTPS. This is the primary target named
+# in docs/architecture-freeze.md Section L (Fly.io is the fallback: fly.toml).
+#
+# Deploy:  push this repo to GitHub, then Render Dashboard -> New -> Blueprint,
+#          point it at the repo. Full runbook: docs/deployment.md.
+#
+# The 4 credential vars below carry PLACEHOLDER values so the first deploy
+# succeeds with AI + Razorpay disabled (the settings model only rejects
+# placeholders when the matching *_ENABLED flag is true). Set the real values as
+# env vars in the Render dashboard — dashboard values override this file — then
+# flip AI_ENABLED / RAZORPAY_ENABLED to "true" and redeploy.
+
+databases:
+  - name: agentgate-db
+    databaseName: agentgate
+    user: agentgate
+    plan: free               # free Postgres is deleted after ~30 days — upgrade for anything lasting
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: agentgate
+    runtime: docker
+    plan: free                # free web services cold-start after 15 min idle — see the warming note in docs/deployment.md
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: false          # deploy on demand; flip to true to deploy on every push to the tracked branch
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentgate-db
+          property: connectionString   # Render's internal URL; config.normalize_database_url() rewrites the scheme for asyncpg
+      - key: ENVIRONMENT
+        value: production
+      - key: RUN_MIGRATIONS_ON_START
+        value: "true"                  # entrypoint.sh runs `alembic upgrade head` before uvicorn
+      - key: SEED_ON_START
+        value: "true"                  # load the SIMULATED demo catalogue/agents on first boot (idempotent); set "false" if you seed manually
+
+      # --- AI (Anthropic) — disabled until a real key is set in the dashboard ---
+      - key: AI_ENABLED
+        value: "false"
+      - key: ANTHROPIC_API_KEY
+        value: sk-ant-placeholder-set-a-real-key-in-the-render-dashboard
+      - key: AI_MODEL
+        value: claude-opus-5
+      - key: AI_REQUEST_TIMEOUT_SECONDS
+        value: "20"
+      - key: AI_PARSE_CONFIDENCE_THRESHOLD
+        value: "0.6"
+      - key: AI_BUYER_MAX_STEPS
+        value: "8"
+      - key: AI_BUYER_MAX_REQUEST_ACTIONS
+        value: "3"
+
+      # --- Razorpay TEST MODE — disabled until real test-mode keys are set ---
+      - key: RAZORPAY_ENABLED
+        value: "false"
+      - key: RAZORPAY_KEY_ID
+        value: rzp_test_placeholder
+      - key: RAZORPAY_KEY_SECRET
+        value: placeholder_secret
+      - key: RAZORPAY_WEBHOOK_SECRET
+        value: placeholder_webhook_secret
+
+      - key: DEFAULT_MAX_DISCOUNT_PCT
+        value: "10.0"
+      - key: DEFAULT_APPROVAL_THRESHOLD_INR
+        value: "5000.0"

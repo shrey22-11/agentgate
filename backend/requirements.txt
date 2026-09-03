@@ -1,0 +1,27 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.7.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+python-dotenv==1.0.1
+
+# Added in Phase 6 (Razorpay) and Phase 4 (AI) — listed here now so the
+# lockfile story is decided early, per Section L ("decide versions and
+# infrastructure early"). Not imported by any Phase 2 code yet.
+#
+# razorpay 2.0.1 (not the scaffold's 1.4.2): 1.4.2 imports the removed
+# `pkg_resources` module at import time and is broken on setuptools >= 81,
+# which is what a clean Python 3.12 environment now installs. 2.0.1 drops
+# that dependency. Verified importable here.
+razorpay==2.0.1
+# anthropic 1.x (the scaffold pinned 0.40.0, ~Dec 2024): Phase 9 uses
+# `client.messages.parse(output_format=...)` structured output, which needs a
+# current SDK. 1.x runs on httpx2 (coexists with the httpx used by tests).
+anthropic==1.3.0
+
+# Testing (Phase 3 onward)
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1

@@ -1,0 +1,55 @@
+# CI pipeline from docs/architecture-freeze.md Section L: pytest -> docker build.
+# (No lint/typecheck step: the repo ships no ruff/mypy config; the strict
+# frontend build `tsc -b` runs inside the docker-build job.)
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentgate
+          POSTGRES_PASSWORD: agentgate_local_dev
+          POSTGRES_DB: agentgate
+        ports:
+          - 5544:5432
+        options: >-
+          --health-cmd "pg_isready -U agentgate"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # conftest.py points tests at agentgate_test on localhost:5544 regardless;
+      # these satisfy the required settings fields for collection + alembic.
+      DATABASE_URL: postgresql+asyncpg://agentgate:agentgate_local_dev@localhost:5544/agentgate
+      ANTHROPIC_API_KEY: sk-ant-ci-not-a-real-key
+      AI_MODEL: claude-sonnet-4-5
+      RAZORPAY_KEY_ID: rzp_test_ci
+      RAZORPAY_KEY_SECRET: ci_secret
+      RAZORPAY_WEBHOOK_SECRET: ci_webhook_secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: alembic upgrade head (fresh DB)
+        working-directory: backend
+        run: python -m alembic upgrade head
+      - name: pytest
+        working-directory: backend
+        run: python -m pytest -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "docker build (multi-stage SPA + python runtime)"
+        run: docker build -t agentgate:ci .

@@ -1,0 +1,18 @@
+# secrets
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# misc
+.DS_Store
+

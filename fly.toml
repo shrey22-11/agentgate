@@ -1,0 +1,52 @@
+# Fly.io fallback deploy. Render (render.yaml) is the primary target named in
+# docs/architecture-freeze.md Section L. Full runbook: docs/deployment.md.
+#
+#   fly launch --no-deploy --copy-config --name agentgate
+#   fly postgres create --name agentgate-db
+#   fly postgres attach agentgate-db          # sets DATABASE_URL as a secret
+#   fly secrets set ANTHROPIC_API_KEY=sk-ant-placeholder \
+#                   RAZORPAY_KEY_ID=rzp_test_placeholder \
+#                   RAZORPAY_KEY_SECRET=placeholder_secret \
+#                   RAZORPAY_WEBHOOK_SECRET=placeholder_webhook_secret
+#   fly deploy
+#
+# The 4 credential secrets must be present (any non-empty value) even while
+# AI/Razorpay are disabled; replace them with real values via `fly secrets set`
+# and flip the *_ENABLED flags when ready.
+
+app = "agentgate"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  RUN_MIGRATIONS_ON_START = "false"   # release_command below runs migrations instead
+  SEED_ON_START = "true"             # load the SIMULATED demo data on first boot (idempotent)
+  AI_ENABLED = "false"
+  RAZORPAY_ENABLED = "false"
+  AI_MODEL = "claude-opus-5"
+  AI_REQUEST_TIMEOUT_SECONDS = "20"
+  AI_PARSE_CONFIDENCE_THRESHOLD = "0.6"
+  AI_BUYER_MAX_STEPS = "8"
+  AI_BUYER_MAX_REQUEST_ACTIONS = "3"
+  DEFAULT_MAX_DISCOUNT_PCT = "10.0"
+  DEFAULT_APPROVAL_THRESHOLD_INR = "5000.0"
+
+[deploy]
+  release_command = "alembic upgrade head"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "10s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/health"

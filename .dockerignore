@@ -1,0 +1,29 @@
+# Keep the build context small and secret-free. The Dockerfile only COPYs
+# backend/ and frontend/ (source), so everything here is either never copied
+# or regenerated inside the build.
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.DS_Store
+
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# never ship local secrets into an image layer
+.env
+.env.*
+
+# rebuilt by stage 1 of the Dockerfile
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# not needed at runtime
+docs/
+*.md

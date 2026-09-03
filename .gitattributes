@@ -1,0 +1,4 @@
+# Shell scripts must stay LF even on a Windows checkout — the container runs
+# them with /bin/sh, which chokes on CR.
+*.sh text eol=lf
+backend/entrypoint.sh text eol=lf
