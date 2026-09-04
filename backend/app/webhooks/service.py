@@ -170,7 +170,13 @@ async def process_webhook(
     new_status = _EVENT_TO_STATUS.get(event_type)
     if (
         new_status is not None
-        and attempt.status in _NON_TERMINAL
+        and (
+            attempt.status in _NON_TERMINAL
+            or (
+                new_status is PaymentStatus.PAID
+                and attempt.status is PaymentStatus.FAILED
+            )
+        )
         and attempt.status != new_status
     ):
         attempt.status = new_status
