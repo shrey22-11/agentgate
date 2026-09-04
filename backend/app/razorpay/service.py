@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit_event, events
+from app.core.config import get_settings
 from app.core.enums import PaymentStatus, Verdict
 from app.policy.models import Decision
 from app.razorpay.client import (
@@ -98,6 +99,22 @@ def _require_enabled(client: RazorpayClient) -> None:
     """Fail before any DB write if Razorpay is disabled — no half-built attempt."""
     if isinstance(client, DisabledRazorpayClient):
         raise RazorpayDisabledError("RAZORPAY_ENABLED is false")
+
+
+def _callback_url(decision_id) -> str | None:
+    """
+    Where Razorpay redirects the customer's browser after a payment-link
+    attempt. `decision_id` round-trips through our own query string (never
+    trusted as proof of payment — see PAYMENT_CALLBACK_UX in docs) so the
+    frontend's result page knows which decision to ask the backend about.
+    None when the deployment has not configured its public URL, in which case
+    Razorpay creates the link without a callback and the customer returns to
+    AgentGate manually; the webhook still updates status either way.
+    """
+    base = get_settings().public_base_url
+    if not base:
+        return None
+    return f"{base}/?payment_callback=1&decision_id={decision_id}"
 
 
 async def _load_decision_for_update(session: AsyncSession, decision_id) -> Decision:
@@ -186,6 +203,7 @@ async def execute_payment(
     await session.commit()  # Txn 1 complete; decision row lock released
 
     # --- Razorpay call (no DB transaction held) ------------------------
+    callback_url = _callback_url(decision_id)
     try:
         result: PaymentLinkResult = await client.create_payment_link(
             amount_paise=_amount_paise(amount),
@@ -196,6 +214,8 @@ async def execute_payment(
                 "decision_id": str(decision.id),
                 "action_request_id": str(decision.action_request_id),
             },
+            callback_url=callback_url,
+            callback_method="get" if callback_url else None,
         )
     except RazorpayError as exc:
         # --- Txn 2b (failure) -----------------------------------------
@@ -246,6 +266,30 @@ async def _mark_failed(
         },
     )
     await session.commit()
+
+
+async def get_payment_status(session: AsyncSession, decision_id) -> PaymentExecutionResponse:
+    """
+    Pure read of local state for the customer-facing payment-result page and
+    its polling loop: no Razorpay call, no row lock, no write. The webhook (and
+    `execute_payment` / `reconcile_payment_attempt`) are the only things that
+    ever change a PaymentAttempt's status — this just reports it, so the
+    frontend never has to trust a Razorpay callback query parameter.
+    """
+    decision = (
+        await session.scalars(select(Decision).where(Decision.id == decision_id))
+    ).one_or_none()
+    if decision is None:
+        raise DecisionNotFound("DECISION_NOT_FOUND", f"No decision with id {decision_id}")
+    if decision.executable_amount is None:
+        raise ExecutionError("NO_EXECUTABLE_AMOUNT", "Decision has no executable_amount.")
+
+    attempt = await _existing_attempt(session, decision_id)
+    if attempt is None:
+        raise ExecutionConflict(
+            "NO_PAYMENT_ATTEMPT", f"No payment attempt for decision {decision_id}."
+        )
+    return _response(attempt, decision.executable_amount, already_existed=True)
 
 
 async def reconcile_payment_attempt(

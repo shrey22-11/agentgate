@@ -118,6 +118,21 @@ class Settings(BaseSettings):
     default_max_discount_pct: float = 10.0
     default_approval_threshold_inr: float = 5000.0
 
+    # --- Public URL (customer payment-return flow) ---
+    # The externally-reachable origin this deployment is served from, e.g.
+    # https://agentgate.onrender.com — no trailing slash. Used only to build the
+    # `callback_url` Razorpay redirects the customer's browser back to after a
+    # test-mode payment (see app.razorpay.service.execute_payment). Optional:
+    # when blank, payment links are created without a callback_url — payment
+    # still completes and the webhook still updates status, the customer just
+    # has to navigate back to AgentGate manually instead of being redirected.
+    public_base_url: str = Field(default="")
+
+    @field_validator("public_base_url", mode="before")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str | None) -> str:
+        return (value or "").strip().rstrip("/")
+
     @model_validator(mode="after")
     def _check_razorpay_credentials(self) -> "Settings":
         if not self.razorpay_enabled:

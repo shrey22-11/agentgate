@@ -45,13 +45,13 @@ services:
       # UI's Structured mode is unaffected. Gemini has a free tier — limits are
       # set by Google and can change; not guaranteed free.
       - key: AI_ENABLED
-        value: "false"
+        value: "true"
       - key: GEMINI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.5-flash
       - key: AI_REQUEST_TIMEOUT_SECONDS
-        value: "20"
+        value: "60"
       - key: AI_PARSE_CONFIDENCE_THRESHOLD
         value: "0.6"
       - key: AI_BUYER_MAX_STEPS
@@ -73,3 +73,12 @@ services:
         value: "10.0"
       - key: DEFAULT_APPROVAL_THRESHOLD_INR
         value: "5000.0"
+
+      # --- Public URL (customer payment-return flow) ---
+      # Set this to this service's actual Render URL (Render dashboard shows
+      # it at the top of the service page, normally https://agentgate.onrender.com
+      # but confirm — a name collision can change it). Used only to build the
+      # Razorpay payment-link callback_url; leave blank and Razorpay just won't
+      # redirect the customer back automatically (payment + webhook still work).
+      - key: PUBLIC_BASE_URL
+        sync: false

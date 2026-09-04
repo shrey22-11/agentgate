@@ -222,6 +222,8 @@ const PATHS: Record<string, ReactNode> = {
   send: <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />,
   refresh: <><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" /></>,
   spark: <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z" />,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
+  close: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" /></>,
 };
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {
   return (

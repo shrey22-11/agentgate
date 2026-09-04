@@ -259,6 +259,7 @@ async def evaluate_action(
         reason=decision.reason,
         policy_version=decision.policy_version,
         counter_offer=counter_offer,
+        executable_amount=decision_row.executable_amount,
     )
 
 

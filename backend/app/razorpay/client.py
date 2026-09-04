@@ -49,6 +49,8 @@ class RazorpayClient(Protocol):
         reference_id: str,
         description: str,
         notes: dict[str, str],
+        callback_url: str | None = None,
+        callback_method: str | None = None,
     ) -> PaymentLinkResult: ...
 
     async def fetch_payment_links_by_reference(
@@ -87,6 +89,8 @@ class SdkRazorpayClient:
         reference_id: str,
         description: str,
         notes: dict[str, str],
+        callback_url: str | None = None,
+        callback_method: str | None = None,
     ) -> PaymentLinkResult:
         data = {
             "amount": amount_paise,
@@ -97,6 +101,12 @@ class SdkRazorpayClient:
             "notes": notes,
             "reminder_enable": False,
         }
+        # Only set when the deployment knows its own public URL (Section:
+        # config.public_base_url). Razorpay requires callback_method="get"
+        # whenever callback_url is present.
+        if callback_url:
+            data["callback_url"] = callback_url
+            data["callback_method"] = callback_method or "get"
         try:
             entity = await asyncio.to_thread(self._sdk.payment_link.create, data)
         except Exception as exc:  # SDK raises requests/BadRequestError subclasses

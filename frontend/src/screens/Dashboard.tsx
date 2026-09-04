@@ -86,7 +86,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: "audit" | "approvals
                     <VerdictBadge verdict={v} />
                     <span className="num">{n} · {pct}%</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                  <div style={{ height: 8, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}>
                     <div
                       style={{
                         height: "100%",

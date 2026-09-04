@@ -23,6 +23,7 @@ from app.razorpay.service import (
     ExecutionFailed,
     ExecutionNotAllowed,
     execute_payment,
+    get_payment_status,
     reconcile_payment_attempt,
 )
 
@@ -39,6 +40,22 @@ _STATUS_BY_EXCEPTION = {
 def _http_error(exc: ExecutionError) -> HTTPException:
     status = _STATUS_BY_EXCEPTION.get(type(exc), 500)
     return HTTPException(status, detail={"code": exc.code, "message": exc.message})
+
+
+@router.get("/{decision_id}", response_model=PaymentExecutionResponse)
+async def status(
+    decision_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+) -> PaymentExecutionResponse:
+    """
+    Read-only status for the customer-facing payment-result page and its
+    polling loop. Local DB state only — never calls Razorpay, so this is safe
+    (and cheap) to poll. The webhook is what actually moves the status.
+    """
+    try:
+        return await get_payment_status(session, decision_id)
+    except ExecutionError as exc:
+        raise _http_error(exc) from exc
 
 
 @router.post("/{decision_id}/execute", response_model=PaymentExecutionResponse)

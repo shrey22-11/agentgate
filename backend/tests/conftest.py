@@ -45,6 +45,10 @@ os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "dummy_webhook_secret")
 # explicitly.
 os.environ["AI_ENABLED"] = "false"
 os.environ["RAZORPAY_ENABLED"] = "false"
+# Same reasoning: a developer's real .env may set this for local end-to-end
+# testing of the Razorpay callback redirect. Tests that need it non-blank
+# monkeypatch app.razorpay.service.get_settings explicitly instead.
+os.environ["PUBLIC_BASE_URL"] = ""
 
 # --- fixtures -------------------------------------------------------------
 import pytest  # noqa: E402

@@ -106,10 +106,25 @@ class FakeRazorpayClient:
         self._seq = 0
 
     async def create_payment_link(
-        self, *, amount_paise, currency, reference_id, description, notes
+        self,
+        *,
+        amount_paise,
+        currency,
+        reference_id,
+        description,
+        notes,
+        callback_url=None,
+        callback_method=None,
     ) -> PaymentLinkResult:
         self.create_calls.append(
-            {"amount_paise": amount_paise, "currency": currency, "reference_id": reference_id, "notes": notes}
+            {
+                "amount_paise": amount_paise,
+                "currency": currency,
+                "reference_id": reference_id,
+                "notes": notes,
+                "callback_url": callback_url,
+                "callback_method": callback_method,
+            }
         )
         if self.fail_create:
             raise RazorpayError("payment_link.create failed: FakeInducedError")

@@ -81,6 +81,9 @@ class _Api:
     async def execute(self, decision_id: str):
         return await self.client.post(f"/payments/{decision_id}/execute")
 
+    async def status(self, decision_id: str):
+        return await self.client.get(f"/payments/{decision_id}")
+
     async def reconcile(self, decision_id: str):
         return await self.client.post(f"/payments/{decision_id}/reconcile")
 
@@ -587,3 +590,90 @@ def test_settings_accept_enabled_with_real_looking_credentials() -> None:
         razorpay_webhook_secret="whsec_ABC123",
     )
     assert s.razorpay_enabled is True
+
+
+def test_settings_public_base_url_strips_trailing_slash() -> None:
+    s = Settings(
+        database_url="postgresql+asyncpg://x/y",
+        gemini_api_key="k",
+        razorpay_key_id="x",
+        razorpay_key_secret="x",
+        razorpay_webhook_secret="x",
+        public_base_url="https://agentgate.example.com/",
+    )
+    assert s.public_base_url == "https://agentgate.example.com"
+
+
+# ==================== GET /payments/{decision_id} (Phase 14 UI) ====================
+# Read-only status for the customer-facing payment-result page: no Razorpay
+# call, no row lock, no write — just what execute/reconcile/the webhook already
+# recorded.
+
+async def test_status_unknown_decision_404(api) -> None:
+    r = await api.status(str(uuid.uuid4()))
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "DECISION_NOT_FOUND"
+
+
+async def test_status_before_execute_is_409_no_attempt(api) -> None:
+    d = await api.make_decision("active_agent", "trailblaze", quantity=1)
+    r = await api.status(d["decision_id"])
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "NO_PAYMENT_ATTEMPT"
+
+
+async def test_status_matches_execute_response(api) -> None:
+    d = await api.make_decision("active_agent", "trailblaze", quantity=1)
+    executed = (await api.execute(d["decision_id"])).json()
+
+    r = await api.status(d["decision_id"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "PENDING"
+    assert body["amount"] == executed["amount"] == "4500.00"
+    assert body["razorpay_payment_link_id"] == executed["razorpay_payment_link_id"]
+    assert body["short_url"] == executed["short_url"]
+    # a GET never creates or mutates an attempt, and never calls Razorpay again
+    assert body["already_existed"] is True
+    assert len(api.fake.create_calls) == 1
+
+
+async def test_status_does_not_call_razorpay(api) -> None:
+    """A poll loop hitting this every few seconds must never touch Razorpay."""
+    d = await api.make_decision("active_agent", "trailblaze", quantity=1)
+    await api.execute(d["decision_id"])
+    for _ in range(5):
+        r = await api.status(d["decision_id"])
+        assert r.status_code == 200
+    assert len(api.fake.create_calls) == 1
+
+
+# ==================== callback_url (Phase 14 customer return flow) ====================
+
+async def test_execute_passes_no_callback_when_public_base_url_unset(api) -> None:
+    d = await api.make_decision("active_agent", "trailblaze", quantity=1)
+    await api.execute(d["decision_id"])
+    assert api.fake.create_calls[0]["callback_url"] is None
+
+
+async def test_execute_passes_callback_url_when_public_base_url_set(api, monkeypatch) -> None:
+    from app.core.config import Settings as _Settings
+    import app.razorpay.service as service_module
+
+    stub = _Settings(
+        database_url="postgresql+asyncpg://x/y",
+        razorpay_key_id="x",
+        razorpay_key_secret="x",
+        razorpay_webhook_secret="x",
+        public_base_url="https://agentgate.example.com",
+    )
+    monkeypatch.setattr(service_module, "get_settings", lambda: stub)
+
+    d = await api.make_decision("active_agent", "trailblaze", quantity=1)
+    await api.execute(d["decision_id"])
+
+    call = api.fake.create_calls[0]
+    assert call["callback_url"] == (
+        f"https://agentgate.example.com/?payment_callback=1&decision_id={d['decision_id']}"
+    )
+    assert call["callback_method"] == "get"

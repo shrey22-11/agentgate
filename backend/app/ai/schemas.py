@@ -93,6 +93,13 @@ class NLActionResponse(BaseModel):
     decision: ActionDecisionResponse
     confidence: Decimal
     resolved_product: str | None
+    # The catalogue id behind `resolved_product`, plus the quantity actually
+    # evaluated (explicit, or the policy engine's implied default of 1). Both
+    # None only when resolution failed (no decision was reached at all).
+    # Exposed so the UI can resubmit the *same* product/quantity — e.g. to
+    # accept a COUNTER_OFFER — without re-parsing free text or guessing.
+    resolved_product_id: uuid.UUID | None = None
+    resolved_quantity: int | None = None
     parse_notes: str | None
     override_instructions_detected: bool
 

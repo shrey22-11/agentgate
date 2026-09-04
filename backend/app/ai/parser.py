@@ -315,6 +315,8 @@ async def parse_natural_language_action(
         decision=decision_response,
         confidence=confidence,
         resolved_product=product.name,
+        resolved_product_id=product.id,
+        resolved_quantity=action_create.quantity or 1,
         parse_notes=intent.notes,
         override_instructions_detected=override,
     )

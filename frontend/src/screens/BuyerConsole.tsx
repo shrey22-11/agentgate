@@ -20,6 +20,8 @@ import {
 } from "../ui";
 import { DecisionReveal } from "../components/DecisionReveal";
 import { BuyerTranscript } from "../components/BuyerTranscript";
+import { PurchaseSummary } from "../components/PurchaseSummary";
+import { PaymentAction } from "../components/PaymentAction";
 
 type Mode = "manual" | "parse" | "agent";
 
@@ -34,7 +36,7 @@ const OUTCOME_TONE: Record<string, "ok" | "warn" | "bad" | "info"> = {
   ai_unavailable: "bad",
 };
 
-export function BuyerConsole() {
+export function BuyerConsole({ onNavigate }: { onNavigate: (v: "approvals") => void }) {
   const meta = useAsync(async () => {
     const [agents, products] = await Promise.all([api.agents(), api.products()]);
     return { agents, products };
@@ -64,6 +66,19 @@ export function BuyerConsole() {
   );
   const effectiveAgent = agentId || agents[0]?.id || "";
   const effectiveProduct = productId || products[0]?.id || "";
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === effectiveProduct) ?? null,
+    [products, effectiveProduct],
+  );
+
+  // Only Structured mode has a trustworthy product id + quantity as plain
+  // client state; Natural Language exposes the same fields once resolved, so
+  // Pay Now / Accept-counter-offer work there too. Buyer Agent mode gets
+  // neither — the agent negotiates autonomously within its own run.
+  const paymentProductId =
+    mode === "manual" ? effectiveProduct || null : mode === "parse" ? parse?.resolved_product_id ?? null : null;
+  const paymentQuantity =
+    mode === "manual" ? qty : mode === "parse" ? parse?.resolved_quantity ?? null : null;
 
   async function submit() {
     setBusy(true);
@@ -203,7 +218,7 @@ export function BuyerConsole() {
 
               {mode !== "manual" && (
                 <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>
-                  Needs <span className="kbd">AI_ENABLED=true</span> + an Anthropic key. Structured
+                  Needs <span className="kbd">AI_ENABLED=true</span> + a Gemini key. Structured
                   mode works offline and exercises the same policy engine.
                 </p>
               )}
@@ -228,7 +243,31 @@ export function BuyerConsole() {
             </div>
           )}
 
+          {!busy && decision && mode === "manual" && selectedProduct && (
+            <PurchaseSummary
+              product={selectedProduct}
+              quantity={qty}
+              requestedDiscountPct={discount}
+              decision={decision}
+            />
+          )}
           {!busy && decision && <DecisionReveal key={nonce} decision={decision} />}
+          {!busy && decision && (
+            <PaymentAction
+              key={decision.decision_id}
+              decision={decision}
+              agentId={effectiveAgent}
+              productId={paymentProductId}
+              quantity={paymentQuantity}
+              agentMaxTransaction={activeAgent?.max_transaction_amount ?? null}
+              onNavigateApprovals={() => onNavigate("approvals")}
+              onAccepted={(next) => {
+                setDecision(next);
+                setNonce((n) => n + 1);
+                flash(next.verdict);
+              }}
+            />
+          )}
 
           {parse && (
             <div className="card card--pad stack">

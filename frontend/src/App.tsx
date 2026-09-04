@@ -7,8 +7,19 @@ import { AuditTimeline } from "./screens/AuditTimeline";
 import { Dashboard } from "./screens/Dashboard";
 import { Approvals } from "./screens/Approvals";
 import { Catalog } from "./screens/Catalog";
+import { PaymentResult } from "./screens/PaymentResult";
 
 type View = "buyer" | "audit" | "dashboard" | "approvals" | "catalog";
+
+/** Read a Razorpay payment-return visit off the URL, once, on first render.
+ *  This SPA has no router; the callback is a plain query string on `/` (see
+ *  app.razorpay.service._callback_url) so StaticFiles' same-origin serving
+ *  needs no new backend route to handle it. */
+function readPaymentCallback(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("payment_callback") !== "1") return null;
+  return params.get("decision_id");
+}
 
 const NAV: { id: View; label: string; icon: string }[] = [
   { id: "buyer", label: "AI Buyer", icon: "bot" },
@@ -19,6 +30,7 @@ const NAV: { id: View; label: string; icon: string }[] = [
 ];
 
 export default function App() {
+  const [paymentDecisionId, setPaymentDecisionId] = useState<string | null>(readPaymentCallback);
   const [view, setView] = useState<View>("buyer");
   const [pending, setPending] = useState(0);
   const [env, setEnv] = useState<string | null>(null);
@@ -33,6 +45,22 @@ export default function App() {
     const t = setInterval(tick, 15000);
     return () => clearInterval(t);
   }, [view]);
+
+  if (paymentDecisionId) {
+    return (
+      <ToastProvider>
+        <div className="app-bg" />
+        <PaymentResult
+          decisionId={paymentDecisionId}
+          onDone={() => {
+            window.history.replaceState(null, "", window.location.pathname);
+            setPaymentDecisionId(null);
+            setView("buyer");
+          }}
+        />
+      </ToastProvider>
+    );
+  }
 
   return (
     <ToastProvider>
@@ -72,7 +100,7 @@ export default function App() {
         </aside>
 
         <main className="main">
-          {view === "buyer" && <BuyerConsole />}
+          {view === "buyer" && <BuyerConsole onNavigate={setView} />}
           {view === "audit" && <AuditTimeline />}
           {view === "dashboard" && <Dashboard onNavigate={setView} />}
           {view === "approvals" && <Approvals onResolved={() => setPending((p) => Math.max(0, p - 1))} />}

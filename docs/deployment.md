@@ -120,6 +120,16 @@ Tunables: `AI_MODEL`, `AI_REQUEST_TIMEOUT_SECONDS`,
 `AI_BUYER_MAX_REQUEST_ACTIONS`, `DEFAULT_MAX_DISCOUNT_PCT`,
 `DEFAULT_APPROVAL_THRESHOLD_INR`.
 
+**Optional, customer payment-return flow:** `PUBLIC_BASE_URL` — this
+deployment's own externally-reachable origin (e.g.
+`https://agentgate.onrender.com`, no trailing slash). When set, a Pay Now
+payment link is created with a `callback_url` so Razorpay redirects the
+customer's browser back to AgentGate's Payment Result page once they finish
+paying; blank (the default) skips the callback — the payment and the webhook
+both still work, the customer just has to navigate back manually. Not
+required for the webhook or for judging the deterministic policy engine; only
+affects UI polish on the return trip. See `docs/payment-execution.md`.
+
 ### Secrets without exposing them
 
 - **Render:** service → **Environment** → add `GEMINI_API_KEY` etc. as env
@@ -215,10 +225,20 @@ parse call failed …` has the real cause (quota, key, etc.).
      `payment_link.expired`.
    - Copy the generated **Webhook Secret** → set `RAZORPAY_WEBHOOK_SECRET`
      (**not** the API key secret).
-3. Set `RAZORPAY_ENABLED=true`. Save → redeploy. Confirm boot (placeholder
+3. Set `RAZORPAY_ENABLED=true`. Optionally also set `PUBLIC_BASE_URL` to this
+   same deployed URL (e.g. `https://agentgate-XXXX.onrender.com`, no trailing
+   slash) so Razorpay redirects the customer back to AgentGate's Payment Result
+   page after paying — see *Customer payment-return flow* in
+   `docs/payment-execution.md`. Save → redeploy. Confirm boot (placeholder
    values with the flag on **fail startup** by design).
 
 ### 6b. Create an executable decision
+
+The AI Buyer console now has a **Pay Now** button on any `ALLOW` decision —
+the quickest way to verify the whole loop is to submit a Structured-mode
+purchase in the UI and click it. The `curl` walkthrough below drives the same
+endpoint directly, which is still useful for a repeatable / scripted check.
+
 `POST /payments/{decision_id}/execute` only works for an **ALLOW** decision, or a
 **NEEDS_APPROVAL** decision that has been **APPROVED**. Make an ALLOW one:
 

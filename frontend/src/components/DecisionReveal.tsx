@@ -15,6 +15,13 @@ export function DecisionReveal({ decision }: { decision: Decision }) {
         </div>
         <p className="decision__reason">{decision.reason}</p>
 
+        {decision.executable_amount != null && (
+          <div className="decision__amount">
+            <span className="muted" style={{ fontSize: 12 }}>Amount</span>
+            <b>{inr(decision.executable_amount)}</b>
+          </div>
+        )}
+
         {decision.counter_offer && (
           <div className="decision__counter">
             <span className="muted" style={{ fontSize: 12 }}>Counter-offer</span>

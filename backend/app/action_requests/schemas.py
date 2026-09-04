@@ -50,3 +50,9 @@ class ActionDecisionResponse(BaseModel):
     reason: str
     policy_version: str
     counter_offer: CounterOfferOut | None = None
+    # The amount `POST /payments/{decision_id}/execute` will charge — set for
+    # ALLOW and approved-eligible NEEDS_APPROVAL, null for DENY/COUNTER_OFFER.
+    # Echoed from `decision.executable_amount` (app.policy.engine, unchanged)
+    # purely so the UI can show the real charge amount instead of recomputing
+    # money math client-side.
+    executable_amount: Decimal | None = None

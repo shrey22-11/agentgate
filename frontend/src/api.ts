@@ -61,13 +61,33 @@ export interface Decision {
   reason: string;
   policy_version: string;
   counter_offer: CounterOffer | null;
+  // What POST /payments/{decision_id}/execute will charge. Set for ALLOW and
+  // NEEDS_APPROVAL, null for DENY/COUNTER_OFFER. Always the source of truth
+  // for "Pay Now ₹X" — never recomputed from list price/discount in the UI.
+  executable_amount: string | null;
 }
 export interface NLActionResponse {
   decision: Decision;
   confidence: string;
   resolved_product: string | null;
+  // The catalogue id + quantity actually evaluated, so the UI can resubmit
+  // the same deal (e.g. to accept a COUNTER_OFFER) without re-parsing text.
+  resolved_product_id: string | null;
+  resolved_quantity: number | null;
   parse_notes: string | null;
   override_instructions_detected: boolean;
+}
+
+export type PaymentStatus = "CREATED" | "PENDING" | "PAID" | "FAILED" | "EXPIRED";
+export interface PaymentExecution {
+  payment_attempt_id: string;
+  decision_id: string;
+  status: PaymentStatus;
+  amount: string;
+  currency: string;
+  razorpay_payment_link_id: string | null;
+  short_url: string | null;
+  already_existed: boolean;
 }
 export interface TranscriptEntry {
   step: number;
@@ -211,6 +231,15 @@ export const api = {
 
   aiBuyer: (body: { agent_id: string; goal: string }) =>
     post<BuyerRunResponse>("/ai/buyer", body),
+
+  // Creates the Razorpay payment link for an ALLOW/approved decision (idempotent
+  // server-side: a repeat call for the same decision returns the existing
+  // attempt rather than creating a second Razorpay object).
+  executePayment: (decisionId: string) =>
+    post<PaymentExecution>(`/payments/${decisionId}/execute`, {}),
+  // Read-only: local DB status only, never calls Razorpay. Safe to poll.
+  paymentStatus: (decisionId: string) =>
+    get<PaymentExecution>(`/payments/${decisionId}`),
 
   pendingApprovals: () => get<PendingApproval[]>("/approvals/pending"),
   approve: (decisionId: string, body: { approver: string; reason?: string }) =>

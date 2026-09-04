@@ -268,14 +268,35 @@ Duplicate webhook: the second delivery adds nothing (`200 duplicate_ignored`).
 | `RAZORPAY_ENABLED` | `false` (default): the app boots, `/payments/*` and `/webhooks/razorpay` return `503 RAZORPAY_DISABLED`, no DB writes. `true`: real SDK client; startup fails if any of the three secrets is blank or still a `placeholder`. |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | test-mode API key pair |
 | `RAZORPAY_WEBHOOK_SECRET` | the webhook signing secret — **different** from `RAZORPAY_KEY_SECRET` |
+| `PUBLIC_BASE_URL` | optional; this deployment's externally-reachable origin (e.g. `https://agentgate.onrender.com`), no trailing slash. When set, `execute_payment` passes `callback_url` / `callback_method="get"` to `payment_link.create` (see *Customer payment-return flow* below). Blank → no callback_url is sent; the payment and the webhook both still work, the customer just doesn't get redirected back automatically. |
 
 Secrets are never logged and never placed in audit payloads. `.env.example`
 carries placeholders only; `.env` is gitignored.
+
+## Customer payment-return flow (Phase 14 UI)
+
+The UI's **Pay Now** button (`app.razorpay.service.execute_payment` via the
+`/payments/{id}/execute` call above) navigates the customer's browser to the
+returned `short_url`. `_callback_url(decision_id)` builds
+`{PUBLIC_BASE_URL}/?payment_callback=1&decision_id=<id>` and passes it as
+`callback_url` (`callback_method="get"`) so Razorpay redirects the browser back
+there once the payment page is done — Razorpay appends its own `razorpay_*`
+query params to that URL.
+
+**The frontend never reads those `razorpay_*` params as proof of payment.**
+`screens/PaymentResult.tsx` reads only its own `decision_id` back out of the
+query string and calls the read-only status endpoint below; the verdict shown
+to the customer (`PAID` / still processing / `FAILED` / `EXPIRED`) always comes
+from that call, which reflects local DB state driven exclusively by the webhook
+(or `reconcile`) — never by the callback visit itself. A hand-crafted callback
+URL claiming `razorpay_payment_link_status=paid` therefore proves nothing; the
+page still shows whatever the backend actually recorded.
 
 ## API summary
 
 | method + path | success | errors |
 |---|---|---|
+| `GET /payments/{decision_id}` | `200` `PaymentExecutionResponse` — pure read of local state (no Razorpay call, no lock); used by the payment-result page and its polling loop | `404` decision not found · `409` `NO_PAYMENT_ATTEMPT` |
 | `POST /payments/{decision_id}/execute` | `200` `PaymentExecutionResponse` (`status`, `amount`, `razorpay_payment_link_id`, `short_url`, `already_existed`) | `404` decision not found · `409` `VERDICT_NOT_EXECUTABLE` / `NEEDS_APPROVAL_NOT_APPROVED` / `NEEDS_APPROVAL_REJECTED` / `EXECUTION_IN_PROGRESS` / `EXECUTION_TERMINAL_FAILED` · `502` `RAZORPAY_CREATE_FAILED` · `503` `RAZORPAY_DISABLED` |
 | `POST /payments/{decision_id}/reconcile` | `200` `PaymentExecutionResponse` | `404` · `409` `NO_PAYMENT_ATTEMPT` · `503` |
 | `POST /webhooks/razorpay` | `200` `{status, event_type, payment_status}` | `400` `INVALID_SIGNATURE` / `MALFORMED_WEBHOOK` · `503` |
