@@ -16,10 +16,12 @@ python-dotenv==1.0.1
 # which is what a clean Python 3.12 environment now installs. 2.0.1 drops
 # that dependency. Verified importable here.
 razorpay==2.0.1
-# anthropic 1.x (the scaffold pinned 0.40.0, ~Dec 2024): Phase 9 uses
-# `client.messages.parse(output_format=...)` structured output, which needs a
-# current SDK. 1.x runs on httpx2 (coexists with the httpx used by tests).
-anthropic==1.3.0
+# google-genai (the current unified Google GenAI SDK; NOT the deprecated
+# `google-generativeai`). AI provider migrated from Anthropic Claude to Google
+# Gemini 2026-09-04 — no Anthropic credits available; Gemini has a free tier
+# (limits set by Google, not guaranteed free). Pinned to 1.75.0: google-genai
+# 2.x requires pydantic>=2.12.5, and this project pins pydantic==2.10.3.
+google-genai==1.75.0
 
 # Testing (Phase 3 onward)
 pytest==8.3.4

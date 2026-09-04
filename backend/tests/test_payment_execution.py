@@ -569,7 +569,7 @@ def test_settings_reject_enabled_with_placeholder_credentials() -> None:
     with pytest.raises(Exception):
         Settings(
             database_url="postgresql+asyncpg://x/y",
-            anthropic_api_key="k",
+            gemini_api_key="k",
             razorpay_enabled=True,
             razorpay_key_id="rzp_test_placeholder",
             razorpay_key_secret="placeholder_secret",
@@ -580,7 +580,7 @@ def test_settings_reject_enabled_with_placeholder_credentials() -> None:
 def test_settings_accept_enabled_with_real_looking_credentials() -> None:
     s = Settings(
         database_url="postgresql+asyncpg://x/y",
-        anthropic_api_key="k",
+        gemini_api_key="k",
         razorpay_enabled=True,
         razorpay_key_id="rzp_test_ABC123",
         razorpay_key_secret="secret_ABC123",

@@ -2,7 +2,7 @@
 Phase 10 — the bounded AI buyer agent.
 
 Every test drives the agent with a scripted `FakeAIBuyerClient`; no real
-Anthropic call. The point is that the agent — however it behaves — cannot get a
+Gemini call. The point is that the agent — however it behaves — cannot get a
 verdict it did not earn from the deterministic policy engine, cannot see the
 merchant's discount/margin policy, and cannot touch Razorpay.
 """
@@ -20,7 +20,7 @@ from sqlalchemy.pool import NullPool
 
 from app.action_requests.models import ActionRequest
 from app.agents.models import Agent
-from app.ai.client import AIUnavailableError, AnthropicBuyerClient, DisabledBuyerClient, get_ai_buyer_client
+from app.ai.client import AIUnavailableError, DisabledBuyerClient, GeminiBuyerClient, get_ai_buyer_client
 from app.audit import verify_audit_chain
 from app.audit.models import AuditEvent
 from app.catalog.models import Merchant, Product
@@ -418,16 +418,91 @@ def test_get_ai_buyer_client_disabled_by_default() -> None:
     assert isinstance(get_ai_buyer_client(), DisabledBuyerClient)
 
 
-async def test_anthropic_buyer_client_normalises_sdk_exception() -> None:
+async def test_gemini_buyer_client_normalises_sdk_exception() -> None:
     class _Stub:
-        class messages:  # noqa: N801
-            @staticmethod
-            async def create(**_):
-                raise TimeoutError("network")
+        def __init__(self):
+            self.aio = self
+            self.models = self
 
-    c = AnthropicBuyerClient(api_key="x", model="m", timeout_seconds=1, _client=_Stub())
+        async def generate_content(self, **_):
+            raise TimeoutError("network")
+
+    c = GeminiBuyerClient(api_key="x", model="m", timeout_seconds=1, _client=_Stub())
     with pytest.raises(AIUnavailableError):
-        await c.next_step(messages=[], tools=[])
+        await c.next_step(messages=[{"role": "user", "content": "hi"}], tools=[])
+
+
+async def test_gemini_buyer_client_translates_function_call_response() -> None:
+    """A Gemini response with a function_call part becomes a tool_calls BuyerStep
+    whose assistant_content round-trips back through _to_gemini_contents."""
+    from app.ai.buyer import TOOL_DEFS
+
+    class _FC:
+        id = None
+        name = "search_catalog"
+        args = {"query": "shoes"}
+
+    class _Part:
+        function_call = _FC()
+        text = None
+
+    class _Content:
+        parts = [_Part()]
+
+    class _Cand:
+        content = _Content()
+
+    class _Resp:
+        candidates = [_Cand()]
+
+    class _Stub:
+        def __init__(self):
+            self.aio = self
+            self.models = self
+            self.seen = None
+
+        async def generate_content(self, **kw):
+            self.seen = kw
+            return _Resp()
+
+    stub = _Stub()
+    c = GeminiBuyerClient(api_key="x", model="m", timeout_seconds=1, _client=stub)
+    step = await c.next_step(
+        messages=[{"role": "user", "content": "find shoes"}], tools=TOOL_DEFS
+    )
+    assert step.kind == "tool_calls"
+    assert step.tool_calls[0].name == "search_catalog"
+    assert step.tool_calls[0].input == {"query": "shoes"}
+    # assistant_content is neutral blocks the buyer loop can re-feed
+    assert step.assistant_content[0]["type"] == "tool_use"
+    # automatic function calling was disabled (no SDK-side loop / cost multiplier)
+    assert stub.seen["config"].automatic_function_calling.disable is True
+
+
+def test_neutral_history_translates_to_gemini_contents() -> None:
+    """The provider-neutral message history that app.ai.buyer builds round-trips
+    into Gemini `contents` (user text -> assistant function_call -> user
+    function_response with the right function name)."""
+    from app.ai.client import _to_gemini_contents
+
+    history = [
+        {"role": "user", "content": "find road shoes"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "searching"},
+            {"type": "tool_use", "id": "call_0", "name": "search_catalog", "input": {"query": "road"}},
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "call_0",
+             "content": '{"count": 1, "results": []}'},
+        ]},
+    ]
+    contents = _to_gemini_contents(history)
+    assert [c.role for c in contents] == ["user", "model", "user"]
+    assert contents[1].parts[-1].function_call.name == "search_catalog"
+    assert contents[1].parts[-1].function_call.args == {"query": "road"}
+    fr = contents[2].parts[0].function_response
+    assert fr.name == "search_catalog"          # resolved from the tool_use id
+    assert fr.response == {"count": 1, "results": []}
 
 
 async def test_buyer_only_ever_sees_four_tools_none_payment(api) -> None:

@@ -68,7 +68,7 @@ deploying and verifying the live application.
   `docs/payment-execution.md`.
 - **Defensive AI intent parsing** (`app/ai/`): `POST /ai/actions` turns an
   untrusted natural-language request into the existing `ActionRequestCreate`
-  (Anthropic `messages.parse` constrained output → deterministic field coercion
+  (Gemini JSON-schema structured output → Pydantic re-validation → deterministic field coercion
   → catalogue name resolution → confidence gate → **the same `evaluate_action`
   policy path**). The LLM has no field for a verdict, discount ceiling,
   counter-offer, product id, or payment — a prompt-injection ("apply 60% off,
@@ -77,8 +77,9 @@ deploying and verifying the live application.
   bad output, unknown/ambiguous product, invalid numbers, low confidence) fails
   closed to a persisted `DENY / RULE_INPUT_INVALID` with a valid audit chain.
   `AI_ENABLED=false` (default) → the app boots with no key, the route returns
-  `503`. The `anthropic` SDK is imported only in `app/ai/client.py`. See
-  `docs/ai-parsing.md`.
+  `503`. The `google-genai` SDK is imported only in `app/ai/client.py`; one
+  attempt per call, no SDK retries. AI provider migrated Anthropic → Google
+  Gemini 2026-09-04. See `docs/ai-parsing.md`.
 - **AI buyer agent** (`app/ai/buyer.py`, `POST /ai/buyer`): a bounded
   multi-step LLM agent that pursues a shopping `goal` with four tools — three
   read-only catalogue lookups and one `request_action` that routes through the
@@ -119,7 +120,7 @@ deploying and verifying the live application.
   tests; 7 Phase 12 harness tests (frozen-suite structure, no hand-written
   ground truth, full holdout run, every idempotency mechanism + tamper mode);
   and 10 Phase 13 config tests (`DATABASE_URL` normalisation for managed
-  providers) — the AI tests all run against fakes, no real Anthropic call.
+  providers) — the AI tests all run against fakes, no real Gemini call.
 
 The frontend is the 5-screen React SPA delivered in Phase 11 (`docs/frontend.md`).
 
@@ -139,7 +140,8 @@ from the ORM metadata; they never touch dev/seed data.
 
 ```bash
 cp .env.example .env
-# edit .env: fill in ANTHROPIC_API_KEY and your Razorpay TEST MODE keys
+# edit .env: set GEMINI_API_KEY + AI_ENABLED=true for live AI (optional),
+#            and your Razorpay TEST MODE keys
 docker compose up --build
 ```
 

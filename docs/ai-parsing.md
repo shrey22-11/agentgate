@@ -10,7 +10,8 @@ routes it through the **same deterministic policy path** as `POST /actions`.
 ## What the LLM does
 
 - Reads one user message and produces a `ParsedIntent` (constrained structured
-  output via `client.messages.parse(output_format=ParsedIntent)`).
+  output — Gemini `generate_content` with `response_mime_type="application/json"`
+  and `response_schema=ParsedIntent`, re-validated with Pydantic).
 - Extracts: whether it's a purchase request, a **free-text `product_reference`**,
   `action_type` (`PURCHASE` | `ACCEPT_COUNTER_OFFER`), `quantity`, the discount
   the user is *asking for*, a `proposed_price`, a `contains_override_instructions`
@@ -42,7 +43,7 @@ POST /ai/actions  { agent_id, text }
    │
    ▼ load Agent from DB            → 404 AGENT_NOT_FOUND, nothing persisted
    │
-   ▼ client.parse_intent(text)     [Anthropic, structured output]
+   ▼ client.parse_intent(text)     [Gemini, JSON-schema structured output]
    │     AIDisabledError  → 503 AI_DISABLED, nothing persisted
    │     AIUnavailableError → fail closed (see below)
    │
@@ -107,7 +108,7 @@ confidence field, and if it added one it would be `extra="forbid"`-rejected.
 | Failure | Behaviour | HTTP |
 |---|---|---|
 | `AI_ENABLED=false` | `503 AI_DISABLED`, **nothing persisted** | 503 |
-| Anthropic timeout / API error / connection error | `AIUnavailableError` → persisted DENY, audited | 200 |
+| Gemini timeout / API error / no credits / connection error | `AIUnavailableError` → persisted DENY, audited | 200 |
 | Model returns nothing parseable / invalid structured output | `AIUnavailableError` → persisted DENY, audited | 200 |
 | `is_purchase_request=false` or no product named | persisted DENY, `stage="intent"` | 200 |
 | `requested_discount_pct` / `proposed_price` not a finite number, or out of range; `quantity < 1` | persisted DENY, `stage="field_coercion"` | 200 |
@@ -176,34 +177,36 @@ authorization headers** in any audit payload.
 
 | var | meaning |
 |---|---|
-| `AI_ENABLED` | `false` (default): app boots without a real key; `/ai/actions` returns `503`. `true`: real Anthropic client; startup fails if `ANTHROPIC_API_KEY` is blank or a `placeholder`. |
-| `ANTHROPIC_API_KEY` | Claude API key (resolved by the SDK; never logged, never in audit payloads) |
-| `AI_MODEL` | default `claude-opus-5`; any current model id |
+| `AI_ENABLED` | `false` (default): app boots without a key; `/ai/actions` returns `503`. `true`: real Gemini client; startup fails if `GEMINI_API_KEY` is blank. |
+| `GEMINI_API_KEY` | Google AI Studio key (resolved by the SDK; scrubbed from logs, never in audit payloads) |
+| `AI_MODEL` | default `gemini-2.5-flash`; any current Gemini model id (`gemini-2.5-flash-lite` is cheaper) |
 | `AI_REQUEST_TIMEOUT_SECONDS` | per-call timeout (default 20); on timeout the SDK raises and we fail closed |
 | `AI_PARSE_CONFIDENCE_THRESHOLD` | default `0.6` |
 
 `get_ai_client()` returns `DisabledAIClient` (every method raises
-`AIDisabledError`) when disabled, `AnthropicParserClient` when enabled — mirrors
-the Razorpay client pattern. The `anthropic` SDK is imported **only** in
-`app/ai/client.py`.
+`AIDisabledError`) when disabled, `GeminiParserClient` when enabled — mirrors
+the Razorpay client pattern. The `google-genai` SDK is imported **only** in
+`app/ai/client.py`. One attempt per call (no SDK retries); `temperature=0`,
+`thinking_budget=0`, `max_output_tokens=1024` (cost control).
 
 ## Testing
 
 32 tests in `tests/test_ai_parsing.py`, all via `FakeAIParserClient` (returns a
 `ParsedIntent` or raises) injected through `app.dependency_overrides`. **No test
-makes a real Anthropic call.** Coverage: successful parse → policy for
+makes a real Gemini call.** Coverage: successful parse → policy for
 ALLOW/COUNTER_OFFER/ACCEPT_COUNTER_OFFER; exact vs substring confidence;
 unknown/ambiguous product; UUID-as-name; no-intent; invalid numeric fields (7
 cases); provider timeout / empty output; disabled → 503 nothing persisted;
 unknown agent → 404; body validation; the prompt-injection hero case + a
 no-product injection; authority separation (LLM `notes` cannot move the verdict,
 counter-offer value is the engine's, inactive agent still denied by the policy
-engine); the `AnthropicParserClient` error-normalisation logic (stubbed client);
+engine); the `GeminiParserClient` output-coercion + error-normalisation logic (stubbed client);
 config validator; and an import guard that `app/ai/` never imports
 `razorpay` / `counter_offer` / `payment`.
 
-## Not verified against the real Anthropic API
+## Not verified against the real Gemini API
 
 All Phase 9 behaviour is tested with the fake client. A live check (set
-`AI_ENABLED=true` + a real test key, `POST /ai/actions`) has **not** been run —
-no key is available in this environment.
+`AI_ENABLED=true` + a real `GEMINI_API_KEY`, `POST /ai/actions`) has **not** been
+run from this environment. Provider migrated Anthropic → Google Gemini
+2026-09-04 (see docs/architecture-freeze.md).

@@ -32,17 +32,17 @@ _TEST_DB = _DEV_DB.rsplit("/", 1)[0] + "/agentgate_test"
 
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", _TEST_DB)
 os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
-os.environ.setdefault("AI_MODEL", "claude-sonnet-4-5")
+os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key-not-real")
+os.environ.setdefault("AI_MODEL", "gemini-2.5-flash")
 os.environ.setdefault("RAZORPAY_KEY_ID", "rzp_test_dummy")
 os.environ.setdefault("RAZORPAY_KEY_SECRET", "dummy_secret")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "dummy_webhook_secret")
 # Hard-set (not setdefault): the suite runs entirely against fakes and must
-# never make a real Anthropic / Razorpay call, even when a developer's
-# repo-root .env has AI_ENABLED=true / RAZORPAY_ENABLED=true for live testing.
-# Real env vars take precedence over the .env file in pydantic-settings, so
-# this cleanly overrides it. Tests that need the enabled path build a Settings
-# instance explicitly.
+# never make a real Gemini / Razorpay call, even when a developer's repo-root
+# .env has AI_ENABLED=true / RAZORPAY_ENABLED=true for live testing. Real env
+# vars take precedence over the .env file in pydantic-settings, so this cleanly
+# overrides it. Tests that need the enabled path build a Settings instance
+# explicitly.
 os.environ["AI_ENABLED"] = "false"
 os.environ["RAZORPAY_ENABLED"] = "false"
 

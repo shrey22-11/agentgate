@@ -164,6 +164,7 @@ def test_audit_source_has_no_llm_and_no_float() -> None:
         src = path.read_text(encoding="utf-8").lower()
         assert "anthropic" not in src, path
         assert "openai" not in src, path
+        assert "genai" not in src, path
     for mod in (hashing_module, service_module, verify_module):
         src = Path(mod.__file__).read_text(encoding="utf-8")
         assert "float(" not in src, mod.__name__

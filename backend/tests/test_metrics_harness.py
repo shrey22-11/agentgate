@@ -93,7 +93,7 @@ def test_ground_truth_is_computed_from_the_real_engine() -> None:
 
 
 def test_metrics_package_imports_no_provider_sdk() -> None:
-    bad = re.compile(r"^\s*(?:import|from)\s+(anthropic|openai|razorpay)\b", re.M)
+    bad = re.compile(r"^\s*(?:import|from)\s+(anthropic|openai|google\.genai|genai|razorpay)\b", re.M)
     for path in sorted(_METRICS_DIR.glob("*.py")):
         text = path.read_text(encoding="utf-8")
         assert not bad.search(text), f"{path.name} imports a provider SDK directly"

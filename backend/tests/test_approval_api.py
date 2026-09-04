@@ -409,7 +409,7 @@ def test_approval_source_does_not_import_llm_or_razorpay() -> None:
 
     import app.approvals.service as svc
 
-    forbidden = ("anthropic", "openai", "razorpay")
+    forbidden = ("anthropic", "openai", "genai", "razorpay")
     pkg_dir = Path(svc.__file__).parent
     for path in sorted(pkg_dir.glob("*.py")):
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):

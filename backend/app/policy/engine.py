@@ -12,7 +12,7 @@ Rule precedence is documented in `app.policy.rules`. The first rule that fires
 decides the verdict.
 
 Phase boundary: this module evaluates policy only. It moves no money, writes no
-`decision` row, and calls no Razorpay or Anthropic API. Those are later phases.
+`decision` row, and calls no Razorpay or Gemini API. Those are later phases.
 """
 from __future__ import annotations
 

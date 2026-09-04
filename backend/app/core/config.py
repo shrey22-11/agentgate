@@ -78,13 +78,17 @@ class Settings(BaseSettings):
     def _normalize_database_url(cls, value: str) -> str:
         return normalize_database_url(value)
 
-    # --- AI provider (single provider: Anthropic Claude, per Section G) ---
-    # The app boots without a real key as long as ai_enabled is false. When
-    # true the key must be real (not blank, not the .env.example placeholder)
-    # or startup fails clearly.
+    # --- AI provider (single provider: Google Gemini, per Section G;
+    #     migrated from Anthropic Claude 2026-09-04, see docs/architecture-freeze) ---
+    # The app boots without a key as long as ai_enabled is false. When true the
+    # key must be present or startup fails clearly. AI is used ONLY to extract a
+    # structured ParsedIntent / a buyer-agent proposal — never to decide a
+    # verdict, a discount ceiling, a cap, an amount, or a payment.
     ai_enabled: bool = Field(default=False)
-    anthropic_api_key: str = Field(..., description="Claude API key")
-    ai_model: str = Field(default="claude-opus-5")
+    gemini_api_key: str = Field(
+        default="", description="Google AI Studio (Gemini) API key"
+    )
+    ai_model: str = Field(default="gemini-2.5-flash")
     ai_request_timeout_seconds: float = Field(default=20.0, gt=0)
     # Deterministic gate (see docs/ai-parsing.md): the natural-language parser
     # emits a confidence in [0, 1] computed from how cleanly the request
@@ -138,11 +142,12 @@ class Settings(BaseSettings):
     def _check_ai_credentials(self) -> "Settings":
         if not self.ai_enabled:
             return self
-        key = self.anthropic_api_key or ""
+        key = (self.gemini_api_key or "").strip()
         if not key or "placeholder" in key.lower():
             raise ValueError(
-                "AI_ENABLED is true but ANTHROPIC_API_KEY is missing or still a "
-                "placeholder"
+                "AI_ENABLED is true but GEMINI_API_KEY is missing or still a "
+                "placeholder. Set AI_ENABLED=false to run without the live "
+                "provider (Structured mode is unaffected)."
             )
         return self
 

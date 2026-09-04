@@ -26,7 +26,7 @@ and the env vars below.
 | Push repo to GitHub | **not done** | **you** |
 | Create the Render (or Fly) deployment from the blueprint | **not done** — needs your deploy account | **you** |
 | Public HTTPS URL reachable, cold-start behaviour | **not done** | **you** |
-| One real `AI_ENABLED=true` Anthropic parse | **not done** — needs your API key | **you** |
+| One real `AI_ENABLED=true` Gemini parse | **not done** — needs your `GEMINI_API_KEY` | **you** |
 | One real Razorpay **test-mode** payment + webhook + signature + `PaymentAttempt` transition + audit chain | **not done** — needs your Razorpay dashboard, a card-test checkout, and the deployed URL | **you** |
 | Three demo flows on the deployed app | **not done** — needs the deploy + the two above | **you** |
 
@@ -87,7 +87,7 @@ PostgreSQL 16, health check on `/health`, automatic HTTPS.
 fly launch --no-deploy --copy-config --name agentgate     # uses fly.toml
 fly postgres create --name agentgate-db --region sin
 fly postgres attach agentgate-db                          # sets DATABASE_URL secret
-fly secrets set ANTHROPIC_API_KEY=sk-ant-placeholder \
+fly secrets set GEMINI_API_KEY=your-gemini-key \
                 RAZORPAY_KEY_ID=rzp_test_placeholder \
                 RAZORPAY_KEY_SECRET=placeholder_secret \
                 RAZORPAY_WEBHOOK_SECRET=placeholder_webhook_secret
@@ -108,7 +108,7 @@ Required (the settings model **exits at boot** if any is missing):
 | Var | Deploy value | Notes |
 |---|---|---|
 | `DATABASE_URL` | auto (Render `fromDatabase` / Fly `attach`) | `postgres://` or `postgresql://` is fine — normalised to `postgresql+asyncpg://`, `sslmode`/`channel_binding` stripped. Use the **internal** URL. |
-| `ANTHROPIC_API_KEY` | placeholder until AI is enabled | rejected as a placeholder **only when `AI_ENABLED=true`** |
+| `GEMINI_API_KEY` | optional; blank until AI is enabled | required (non-blank) **only when `AI_ENABLED=true`**; get one at aistudio.google.com/apikey |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | placeholder until Razorpay is enabled | rejected as placeholders **only when `RAZORPAY_ENABLED=true`** |
 | `RAZORPAY_WEBHOOK_SECRET` | placeholder until Razorpay is enabled | **distinct** from `RAZORPAY_KEY_SECRET` — it is generated per-webhook in the Razorpay dashboard |
 
@@ -122,7 +122,7 @@ Tunables: `AI_MODEL`, `AI_REQUEST_TIMEOUT_SECONDS`,
 
 ### Secrets without exposing them
 
-- **Render:** service → **Environment** → add `ANTHROPIC_API_KEY` etc. as env
+- **Render:** service → **Environment** → add `GEMINI_API_KEY` etc. as env
   vars. Dashboard values **override** `render.yaml`. They are encrypted at rest
   and never printed in build logs. Do **not** put real keys in `render.yaml`.
   (You can also mark a var `sync: false` in `render.yaml` so Render prompts for
@@ -173,14 +173,16 @@ service logs for the `alembic` lines.
 
 ---
 
-## 5. Enable AI and verify one real Anthropic parse — **needs your API key**
+## 5. Enable AI and verify one real Gemini parse — **needs your `GEMINI_API_KEY`**
 
-1. Render: set `ANTHROPIC_API_KEY` to your real key (`sk-ant-…`), set
-   `AI_ENABLED=true`, **Save** → the service redeploys.
-   Fly: `fly secrets set ANTHROPIC_API_KEY=sk-ant-… AI_ENABLED=true`.
-2. Confirm it booted (a bad/placeholder key with `AI_ENABLED=true` **fails
-   startup** by design — check logs).
-3. Run one real parse — the hero prompt-injection case:
+1. Get a key at https://aistudio.google.com/apikey (Gemini has a free tier —
+   limits set by Google, not guaranteed free).
+2. Render: set `GEMINI_API_KEY` to that key, set `AI_ENABLED=true`, **Save** →
+   the service redeploys.
+   Fly: `fly secrets set GEMINI_API_KEY=… ; fly deploy` (then set `AI_ENABLED=true`).
+3. Confirm it booted (a blank key with `AI_ENABLED=true` **fails startup** by
+   design — check logs).
+4. Run one real parse — the hero prompt-injection case:
 
 ```bash
 AG=$(curl -s $URL/catalog/agents | python -c "import sys,json;print(next(a['id'] for a in json.load(sys.stdin) if 'Reference Buyer' in a['name']))")
@@ -196,7 +198,9 @@ true`, and `confidence` a real number. The LLM only produced a `ParsedIntent`;
 the ₹9,000 came from the deterministic engine. Then `curl $URL/audit/chain` →
 still `valid:true`.
 
-This is the only step that makes a **real Anthropic API call** — bill applies.
+This is the only step that makes a **real Gemini API call**. If it fails closed
+with a reason mentioning the provider, the Render log line `agentgate.ai gemini
+parse call failed …` has the real cause (quota, key, etc.).
 
 ---
 
@@ -296,7 +300,7 @@ docker run -d --name ag-local-db --network ag-local \
 docker run -d --name ag-local-app --network ag-local -p 8099:8000 \
   -e "DATABASE_URL=postgresql://ag:agpw@ag-local-db:5432/agentgate_prod?sslmode=disable" \
   -e ENVIRONMENT=production -e SEED_ON_START=true \
-  -e AI_ENABLED=false      -e ANTHROPIC_API_KEY=sk-ant-placeholder -e AI_MODEL=claude-opus-5 \
+  -e AI_ENABLED=false      -e AI_MODEL=gemini-2.5-flash \
   -e RAZORPAY_ENABLED=false -e RAZORPAY_KEY_ID=rzp_test_placeholder \
   -e RAZORPAY_KEY_SECRET=placeholder_secret -e RAZORPAY_WEBHOOK_SECRET=placeholder_webhook_secret \
   agentgate:local
@@ -315,7 +319,7 @@ entrypoint (compose sets its own `DATABASE_URL` for the `db` service).
 
 | Symptom | Cause / fix |
 |---|---|
-| Boot fails: `ValidationError … ANTHROPIC_API_KEY … placeholder` | `AI_ENABLED=true` with a placeholder/blank key. Set the real key or `AI_ENABLED=false`. Same for the 3 Razorpay vars. |
+| Boot fails: `ValidationError … GEMINI_API_KEY is missing` | `AI_ENABLED=true` with a blank key. Set `GEMINI_API_KEY` or `AI_ENABLED=false`. (The 3 Razorpay vars have the same placeholder rule.) |
 | `/health` → `database: unreachable` | Wrong/at-rest DB URL, or external URL missing SSL. Use the **internal** connection string. Check logs for `alembic` errors. |
 | Container crash-loops right after `alembic` line | DB reachable but migration failed — usually a hand-edited schema. `alembic history` / logs. |
 | `/` returns JSON `{"message":"Frontend build not found…"}` | The image was built without stage 1, or `frontend/dist` wasn't copied. Rebuild with the provided `Dockerfile` (don't flatten the `/app/backend` + `/app/frontend` layout). |
@@ -336,7 +340,7 @@ entrypoint (compose sets its own `DATABASE_URL` for the `db` service).
 - **`SEED_ON_START=true`** writes SIMULATED demo data into the "production" DB.
   That is intentional for a demo deploy and idempotent, but set it to `false`
   for any non-demo environment.
-- The **real Razorpay + real Anthropic** verifications (§5, §6) and the **public
+- The **real Razorpay + real Gemini** verifications (§5, §6) and the **public
   HTTPS deploy** itself could not be executed from the build environment — they
   need your accounts, dashboard access, and a card-test checkout. Every command
   you need is above; expected outputs are stated so a mismatch is obvious.

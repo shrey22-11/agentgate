@@ -3,7 +3,7 @@ The defensive natural-language parsing pipeline.
 
     raw text (untrusted)
       -> load Agent from DB (404 if unknown)
-      -> client.parse_intent()  [Anthropic, constrained structured output]
+      -> client.parse_intent()  [Gemini, JSON-schema-constrained structured output]
       -> ParsedIntent (already Pydantic-validated by the SDK)
       -> deterministic field coercion + re-validation
       -> deterministic catalogue resolution (name -> product, never an id)

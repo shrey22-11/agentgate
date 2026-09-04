@@ -2,7 +2,7 @@
 Phase 9 — defensive AI intent parsing.
 
 The AI never decides. Every test either injects a `ParsedIntent` via
-`FakeAIParserClient` or an error; no test makes a real Anthropic call. The
+`FakeAIParserClient` or an error; no test makes a real Gemini call. The
 success path must route through the same deterministic policy as POST /actions;
 every failure must fail closed to a persisted DENY / RULE_INPUT_INVALID with a
 valid audit chain.
@@ -23,8 +23,8 @@ from app.action_requests.models import ActionRequest
 from app.agents.models import Agent
 from app.ai.client import (
     AIUnavailableError,
-    AnthropicParserClient,
     DisabledAIClient,
+    GeminiParserClient,
     get_ai_client,
 )
 from app.ai.schemas import ParsedIntent
@@ -289,8 +289,8 @@ async def test_accept_counter_offer_action_flows(api) -> None:
 
 # ======================= provider failure =============================
 @pytest.mark.parametrize("err", [
-    AIUnavailableError("anthropic call failed: APITimeoutError"),
-    AIUnavailableError("model did not return a valid structured ParsedIntent"),
+    AIUnavailableError("gemini call failed: ClientError | HTTP 429 | rate limit"),
+    AIUnavailableError("gemini did not return a valid ParsedIntent: field required"),
 ])
 async def test_ai_unavailable_fails_closed(api, err) -> None:
     api.set_ai(error=err)
@@ -431,88 +431,111 @@ def test_get_ai_client_disabled_by_default() -> None:
     assert isinstance(get_ai_client(), DisabledAIClient)
 
 
-async def test_anthropic_client_normalises_none_output() -> None:
-    class _Stub:
-        class messages:  # noqa: N801
-            @staticmethod
-            async def parse(**_):
-                class _Resp:
-                    parsed_output = None
-                return _Resp()
+class _GeminiStub:
+    """Mimics the shape GeminiParserClient calls: client.aio.models.generate_content(...)."""
 
-    c = AnthropicParserClient(api_key="x", model="m", timeout_seconds=1, _client=_Stub())
+    def __init__(self, *, response=None, error: BaseException | None = None) -> None:
+        self._response, self._error = response, error
+        self.aio = self  # client.aio.models.generate_content(...)
+        self.models = self
+
+    async def generate_content(self, **_):
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+class _Resp:
+    def __init__(self, *, parsed=None, text=None) -> None:
+        self.parsed, self.text = parsed, text
+
+
+async def test_gemini_client_rejects_none_and_empty_output() -> None:
+    c = GeminiParserClient(api_key="x", model="m", timeout_seconds=1,
+                           _client=_GeminiStub(response=_Resp(parsed=None, text="")))
     with pytest.raises(AIUnavailableError):
         await c.parse_intent(raw_input="hi")
 
 
-async def test_anthropic_client_normalises_sdk_exception() -> None:
-    class _Stub:
-        class messages:  # noqa: N801
-            @staticmethod
-            async def parse(**_):
-                raise TimeoutError("network")
-
-    c = AnthropicParserClient(api_key="x", model="m", timeout_seconds=1, _client=_Stub())
+async def test_gemini_client_rejects_non_conforming_json() -> None:
+    # extra key -> ParsedIntent(extra="forbid") raises -> fail closed
+    bad = _Resp(parsed=None, text='{"is_purchase_request": true, "secret_admin_flag": true}')
+    c = GeminiParserClient(api_key="x", model="m", timeout_seconds=1,
+                           _client=_GeminiStub(response=bad))
     with pytest.raises(AIUnavailableError):
         await c.parse_intent(raw_input="hi")
 
 
-def test_parsedintent_json_schema_is_anthropic_strict() -> None:
-    """Anthropic structured outputs require a *strict* schema: every property in
-    `required`, and additionalProperties=false. Pydantic drops defaulted fields
-    from `required` — the schema hook must add them back, or the real
-    `messages.parse` call 400s with BadRequestError (regression guard)."""
-    from pydantic import TypeAdapter
+async def test_gemini_client_parses_valid_json_text() -> None:
+    good = _Resp(parsed=None, text='```json\n{"is_purchase_request": true, '
+                '"product_reference": "Velocity Pro", "requested_discount_pct": "20"}\n```')
+    c = GeminiParserClient(api_key="x", model="m", timeout_seconds=1,
+                           _client=_GeminiStub(response=good))
+    out = await c.parse_intent(raw_input="buy velocity pro at 20% off")
+    assert isinstance(out, ParsedIntent)
+    assert out.product_reference == "Velocity Pro" and out.requested_discount_pct == "20"
 
-    schema = TypeAdapter(ParsedIntent).json_schema()
-    assert set(schema["required"]) == set(schema["properties"]), (
-        "structured outputs needs every property listed in `required`"
+
+async def test_gemini_client_normalises_sdk_exception() -> None:
+    c = GeminiParserClient(api_key="x", model="m", timeout_seconds=1,
+                           _client=_GeminiStub(error=TimeoutError("network")))
+    with pytest.raises(AIUnavailableError):
+        await c.parse_intent(raw_input="hi")
+
+
+def test_parsedintent_is_a_fail_closed_contract() -> None:
+    """The domain model is the guard: a well-formed payload validates; anything
+    with an unexpected key is rejected (so a compromised model response cannot
+    smuggle a field past the deterministic policy path)."""
+    ok = ParsedIntent.model_validate_json(
+        '{"is_purchase_request": true, "product_reference": "X", "action_type": "PURCHASE"}'
     )
-    assert schema["additionalProperties"] is False
-    # optionals must survive as nullable, not vanish
-    assert {"type": "null"} in schema["properties"]["notes"]["anyOf"]
-    # and the model is still ergonomic to build with defaults
-    ParsedIntent(is_purchase_request=True)
+    assert ok.is_purchase_request and ok.notes is None  # optionals default cleanly
+    with pytest.raises(Exception):
+        ParsedIntent.model_validate({"is_purchase_request": True, "verdict": "ALLOW"})
+    with pytest.raises(Exception):
+        ParsedIntent(is_purchase_request=True, action_type="REFUND")
+    # usable as a Gemini structured-output schema (catches a future breaking change)
+    from google.genai import types as genai_types
+
+    genai_types.GenerateContentConfig(
+        response_mime_type="application/json", response_schema=ParsedIntent
+    )
 
 
-async def test_anthropic_client_error_detail_is_logged_safely(caplog) -> None:
-    """A provider BadRequestError must reach the logs with type + HTTP status +
-    the API's message, and must NOT leak anything key-shaped."""
+async def test_gemini_client_error_detail_is_logged_safely(caplog) -> None:
+    """A provider error must reach the logs with type + HTTP status + the API's
+    message, and must NOT leak anything key-shaped (Gemini keys look like AIza…)."""
 
-    class _FakeBadRequest(Exception):
-        status_code = 400
-        body = {"error": {"type": "invalid_request_error",
-                          "message": "output_config.format.schema: required must list every property "
-                                     "(token sk-ant-leak12345 must be scrubbed)"}}
+    class _FakeClientError(Exception):
+        code = 400
+        status = "INVALID_ARGUMENT"
+        message = "Invalid JSON payload; stray token AIzaSyLEAKLEAKLEAKLEAKLEAKLEAKLEAKLEAK123 present"
 
-    class _Stub:
-        class messages:  # noqa: N801
-            @staticmethod
-            async def parse(**_):
-                raise _FakeBadRequest("Error code: 400")
-
-    c = AnthropicParserClient(api_key="sk-ant-realkey-xxxxx", model="claude-sonnet-4-5-20250929",
-                              timeout_seconds=1, _client=_Stub())
+    c = GeminiParserClient(
+        api_key="AIzaSyREALREALREALREALREALREALREALREAL999",
+        model="gemini-2.5-flash", timeout_seconds=1,
+        _client=_GeminiStub(error=_FakeClientError("400 INVALID_ARGUMENT.")),
+    )
     with caplog.at_level("WARNING", logger="agentgate.ai"):
         with pytest.raises(AIUnavailableError) as ei:
             await c.parse_intent(raw_input="hi")
 
     msg = str(ei.value)
-    assert "_FakeBadRequest" in msg and "HTTP 400" in msg
-    assert "required must list every property" in msg
+    assert "_FakeClientError" in msg and "HTTP 400" in msg
+    assert "Invalid JSON payload" in msg
     logged = caplog.text
-    assert "output_config.format.schema" in logged
-    # key-shaped tokens scrubbed everywhere; the real api_key never appears
-    assert "sk-ant-realkey" not in logged and "sk-ant-realkey" not in msg
-    assert "sk-ant-leak12345" not in logged and "sk-ant-leak12345" not in msg
-    assert "sk-ant-***" in logged
+    assert "gemini parse call failed" in logged and "INVALID_ARGUMENT" in logged
+    assert "AIzaSyREAL" not in logged and "AIzaSyREAL" not in msg
+    assert "AIzaSyLEAK" not in logged and "AIzaSyLEAK" not in msg
+    assert "***" in logged
 
 
-def test_settings_reject_ai_enabled_with_placeholder_key() -> None:
+def test_settings_reject_ai_enabled_with_missing_key() -> None:
     with pytest.raises(Exception):
         Settings(
             database_url="postgresql+asyncpg://x/y",
-            anthropic_api_key="sk-ant-placeholder-set-a-real-key",
+            gemini_api_key="",
             ai_enabled=True,
             razorpay_key_id="k", razorpay_key_secret="k", razorpay_webhook_secret="k",
         )
@@ -521,7 +544,7 @@ def test_settings_reject_ai_enabled_with_placeholder_key() -> None:
 def test_settings_accept_ai_enabled_with_real_looking_key() -> None:
     s = Settings(
         database_url="postgresql+asyncpg://x/y",
-        anthropic_api_key="sk-ant-api03-realish",
+        gemini_api_key="AIzaSy-realish-key-value",
         ai_enabled=True,
         razorpay_key_id="k", razorpay_key_secret="k", razorpay_webhook_secret="k",
     )

@@ -61,7 +61,7 @@ merchant's ceiling out of the catalogue. (`app/catalog/queries.py::ProductView`.
 load Agent (404 if unknown)
 messages = [goal + budget notice]
 for step in 1..AI_BUYER_MAX_STEPS:
-    step = client.next_step(messages, TOOL_DEFS)        [Anthropic messages.create, one turn]
+    step = client.next_step(messages, TOOL_DEFS)        [Gemini generate_content + function calling, one turn]
         AIUnavailableError → stop, outcome = ai_unavailable
     if step is a final answer → stop, summary = text
     for each tool_call in step:
@@ -112,8 +112,8 @@ already made, which is reported instead).
 |---|---|
 | `AI_ENABLED=false` | `503`, nothing persisted |
 | unknown `agent_id` | `404`, nothing persisted |
-| Anthropic error/timeout **at step 1** | `200`, `outcome=ai_unavailable`, nothing persisted |
-| Anthropic error **mid-run** | `200`, `outcome=ai_unavailable`, `final_decision` = whatever the agent already got (those decisions are committed and audited) |
+| Gemini error/timeout **at step 1** | `200`, `outcome=ai_unavailable`, nothing persisted |
+| Gemini error **mid-run** | `200`, `outcome=ai_unavailable`, `final_decision` = whatever the agent already got (those decisions are committed and audited) |
 | model calls `request_action` with a non-existent `product_id` | tool result `{"error": …}`, nothing persisted for that call, run continues |
 | malformed number / bad `action_type` in a tool input | tool result `{"error": …}`, no decision, run continues |
 | malformed body | `422` |
@@ -133,16 +133,18 @@ correct: the agent making three requests is three real decisions.
 
 ## Configuration
 
-Reuses `AI_ENABLED`, `ANTHROPIC_API_KEY`, `AI_MODEL`,
+Reuses `AI_ENABLED`, `GEMINI_API_KEY`, `AI_MODEL`,
 `AI_REQUEST_TIMEOUT_SECONDS` from Phase 9, plus `AI_BUYER_MAX_STEPS` /
 `AI_BUYER_MAX_REQUEST_ACTIONS`. `get_ai_buyer_client()` returns
-`DisabledBuyerClient` when disabled, `AnthropicBuyerClient` when enabled. The
-`anthropic` SDK stays confined to `app/ai/client.py`.
+`DisabledBuyerClient` when disabled, `GeminiBuyerClient` when enabled. The
+`google-genai` SDK stays confined to `app/ai/client.py`; the SDK's own
+automatic function calling is **disabled** — the bounded loop above drives
+tools, so the SDK never loops on its own.
 
 ## Testing
 
 27 tests in `tests/test_ai_buyer.py`, all via a scripted `FakeAIBuyerClient`
-(returns pre-built `BuyerStep`s; can raise after N steps). **No real Anthropic
+(returns pre-built `BuyerStep`s; can raise after N steps). **No real Gemini
 call.** Coverage: search→purchase→ALLOW; counter-offer→accept→ALLOW;
 counter-offer→stop; the ₹1 lowball still floored at the engine's ₹9,000;
 inactive→DENY; high-value→NEEDS_APPROVAL; impersonation attempt ignored; both
@@ -150,12 +152,14 @@ budgets; catalogue tools (and their absence of policy fields); hallucinated
 product ids; malformed tool numbers; provider failure at step 1 and mid-run;
 disabled→503; unknown agent→404; body validation; the four-tools-only guard; and
 an import guard that `app/ai/buyer.py` never imports `razorpay` / `payment` /
-`webhook`.
+`webhook`; and (Gemini migration) that a Gemini `function_call` response is
+translated into a `tool_calls` BuyerStep whose `assistant_content` round-trips.
 
-## Not verified against the real Anthropic API
+## Not verified against the real Gemini API
 
 All Phase 10 behaviour is tested with the fake client. A live run (set
-`AI_ENABLED=true` + a real key, `POST /ai/buyer`) has **not** been executed — no
-key is available in this environment. The `AnthropicBuyerClient` sends
-`messages.create` with `tools=TOOL_DEFS` and reads `stop_reason` /
-`tool_use` blocks per the SDK's documented shapes.
+`AI_ENABLED=true` + a real `GEMINI_API_KEY`, `POST /ai/buyer`) has **not** been
+executed from this environment. The `GeminiBuyerClient` translates the
+provider-neutral message history to Gemini `contents`, calls `generate_content`
+with `tools` (function declarations), and reads `function_call` / text parts
+from the response per the SDK's documented shapes.

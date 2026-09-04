@@ -39,13 +39,17 @@ services:
       - key: SEED_ON_START
         value: "true"                  # load the SIMULATED demo catalogue/agents on first boot (idempotent); set "false" if you seed manually
 
-      # --- AI (Anthropic) — disabled until a real key is set in the dashboard ---
+      # --- AI (Google Gemini) ---
+      # Set GEMINI_API_KEY in the Render dashboard (aistudio.google.com/apikey),
+      # then set AI_ENABLED=true. With AI_ENABLED=false the app runs fine and the
+      # UI's Structured mode is unaffected. Gemini has a free tier — limits are
+      # set by Google and can change; not guaranteed free.
       - key: AI_ENABLED
-        value: "true"
-      - key: ANTHROPIC_API_KEY
+        value: "false"
+      - key: GEMINI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: claude-sonnet-4-5-20250929
+        value: gemini-2.5-flash
       - key: AI_REQUEST_TIMEOUT_SECONDS
         value: "20"
       - key: AI_PARSE_CONFIDENCE_THRESHOLD

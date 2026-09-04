@@ -114,7 +114,7 @@ class SuiteResult:
 # ===========================================================================
 class _StubParser:
     """Stands in for ``app.ai.client.AIParserClient``. Returns a fixed
-    ``ParsedIntent``; no network, no anthropic SDK."""
+    ``ParsedIntent``; no network, no Gemini SDK."""
 
     def __init__(self, intent) -> None:
         self._intent = intent
@@ -703,7 +703,7 @@ async def run_suite(
             metrics=metrics,
             notes=[
                 "Catalogue, stock, margins and the agent population are SIMULATED.",
-                "The natural-language parser's model call is stubbed (no Anthropic "
+                "The natural-language parser's model call is stubbed (no Gemini "
                 "request) - exactly as every AI test in this repo. The deterministic "
                 "re-validation, catalogue resolution, confidence gate and the whole "
                 "policy path are exercised for real.",

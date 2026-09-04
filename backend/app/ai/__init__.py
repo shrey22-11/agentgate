@@ -10,8 +10,8 @@ Public surface:
     parse_natural_language_action(session, client, *, agent_id, raw_input)
     run_buyer_agent(session, client, *, agent_id, goal)
     get_ai_client() / get_ai_buyer_client()      FastAPI dependencies
-    AIParserClient / AnthropicParserClient / DisabledAIClient
-    AIBuyerClient / AnthropicBuyerClient / DisabledBuyerClient
+    AIParserClient / GeminiParserClient / DisabledAIClient
+    AIBuyerClient / GeminiBuyerClient / DisabledBuyerClient
     AIError / AIDisabledError / AIUnavailableError
     ParsedIntent / NLActionRequest / NLActionResponse
     BuyerRunRequest / BuyerRunResponse / BuyerStep / BuyerToolCall
@@ -23,12 +23,12 @@ from app.ai.client import (
     AIError,
     AIParserClient,
     AIUnavailableError,
-    AnthropicBuyerClient,
-    AnthropicParserClient,
     BuyerStep,
     BuyerToolCall,
     DisabledAIClient,
     DisabledBuyerClient,
+    GeminiBuyerClient,
+    GeminiParserClient,
     get_ai_buyer_client,
     get_ai_client,
 )
@@ -47,10 +47,10 @@ __all__ = [
     "get_ai_client",
     "get_ai_buyer_client",
     "AIParserClient",
-    "AnthropicParserClient",
+    "GeminiParserClient",
     "DisabledAIClient",
     "AIBuyerClient",
-    "AnthropicBuyerClient",
+    "GeminiBuyerClient",
     "DisabledBuyerClient",
     "BuyerStep",
     "BuyerToolCall",
