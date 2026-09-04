@@ -140,6 +140,44 @@ def _new_gemini_client(api_key: str, timeout_seconds: float):
         ),
     )
 
+def _gemini_compatible_schema(schema: Any) -> Any:
+    """Strip JSON-Schema keys the Gemini API rejects from a Pydantic
+    ``model_json_schema()`` output.
+
+    Empirically confirmed (not guessed) against the real API: passing
+    ``response_schema=<a Pydantic model class>`` makes the SDK derive a schema
+    that includes ``additionalProperties`` (added by Pydantic because
+    ``ParsedIntent`` uses ``extra="forbid"``). The Gemini structured-output
+    schema is a restricted OpenAPI subset that does not define that field, and
+    the API rejects the whole request with:
+
+        400 INVALID_ARGUMENT: Invalid JSON payload received. Unknown name
+        "additional_properties" at 'generation_config.response_schema':
+        Cannot find field.
+
+    Passing a plain dict with that key removed (this function) was verified to
+    work end to end, including nullable fields expressed as Pydantic's
+    ``anyOf: [{type: X}, {type: "null"}]`` (Gemini accepts that shape as-is —
+    no OpenAPI-``nullable`` rewrite needed) and `default`/`enum`/`title`
+    (harmless, left in place). This is the only schema key that needed
+    removing — do not strip more than this without new evidence.
+    """
+    if isinstance(schema, dict):
+        return {
+            key: _gemini_compatible_schema(value)
+            for key, value in schema.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(schema, list):
+        return [_gemini_compatible_schema(item) for item in schema]
+    return schema
+
+
+# Computed once — ParsedIntent's schema is static. Passed as a plain dict, not
+# the class: response_schema=ParsedIntent (the class) is what triggers the
+# additionalProperties 400 above.
+_PARSE_RESPONSE_SCHEMA = _gemini_compatible_schema(ParsedIntent.model_json_schema())
+
 
 class GeminiParserClient:
     """REAL GEMINI. One JSON-schema-constrained call; all failures normalised."""
@@ -169,18 +207,24 @@ class GeminiParserClient:
                 config=genai_types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
                     response_mime_type="application/json",
-                    response_schema=ParsedIntent,
+                    response_schema=_PARSE_RESPONSE_SCHEMA,
                     temperature=0.0,
                     max_output_tokens=_PARSE_MAX_OUTPUT_TOKENS,
-                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
-                    automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(
-                        disable=True
-                    ),
+                    # NOTE: no thinking_config here. `thinking_config=
+                    # ThinkingConfig(thinking_budget=0)` was empirically
+                    # confirmed to make gemini-3.6-flash reject the request
+                    # with a generic "400 INVALID_ARGUMENT: Request contains
+                    # an invalid argument." (no field name given). Cost control
+                    # instead comes from max_output_tokens + temperature=0.
                 ),
             )
         except Exception as exc:  # noqa: BLE001 — deliberate boundary normalisation
             detail = _safe_provider_error(exc)
-            _log.warning("gemini parse call failed (model=%s): %s", self._model, detail)
+            _log.warning(
+                "gemini parse call failed (model=%s, response_schema=sanitised-dict "
+                "fields=%d, thinking_config=omitted): %s",
+                self._model, len(_PARSE_RESPONSE_SCHEMA.get("properties", {})), detail,
+            )
             raise AIUnavailableError(f"gemini call failed: {detail}") from exc
 
         return _coerce_parsed_intent(response)
@@ -188,11 +232,25 @@ class GeminiParserClient:
 
 def _coerce_parsed_intent(response: Any) -> ParsedIntent:
     """Turn a Gemini response into a Pydantic-validated ParsedIntent, or fail
-    closed. `extra="forbid"` on the model rejects any unexpected key."""
+    closed. `extra="forbid"` on the model rejects any unexpected key — this is
+    the one thing every branch below still goes through, so a compromised or
+    malformed model response can never smuggle an extra field past here."""
     parsed = getattr(response, "parsed", None)
     if isinstance(parsed, ParsedIntent):
         # Re-validate explicitly — never trust the SDK's parse blindly.
         return ParsedIntent.model_validate(parsed.model_dump())
+    if isinstance(parsed, dict):
+        # response_schema is sent as a sanitised plain dict (see
+        # _gemini_compatible_schema), not the ParsedIntent class, so the SDK
+        # gives back a plain dict here rather than constructing the model
+        # itself. Validate it exactly as strictly as the class path would.
+        try:
+            return ParsedIntent.model_validate(parsed)
+        except ValidationError as exc:
+            first = exc.errors()[0]["msg"] if exc.errors() else str(exc)
+            raise AIUnavailableError(
+                f"gemini did not return a valid ParsedIntent: {first}"
+            ) from exc
 
     text = _strip_code_fences(getattr(response, "text", None) or "")
     if not text:
@@ -431,12 +489,17 @@ class GeminiBuyerClient:
                     ),
                     temperature=0.0,
                     max_output_tokens=_BUYER_MAX_OUTPUT_TOKENS,
-                    thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                    # NOTE: no thinking_config here — see GeminiParserClient.parse_intent
+                    # for why. Empirically confirmed the same 400 on this model with
+                    # tools + automatic_function_calling present too.
                 ),
             )
         except Exception as exc:  # noqa: BLE001 — deliberate boundary normalisation
             detail = _safe_provider_error(exc)
-            _log.warning("gemini buyer call failed (model=%s): %s", self._model, detail)
+            _log.warning(
+                "gemini buyer call failed (model=%s, tools=%d, thinking_config=omitted): %s",
+                self._model, len(tools), detail,
+            )
             raise AIUnavailableError(f"gemini buyer call failed: {detail}") from exc
 
         return _gemini_response_to_buyer_step(response)
