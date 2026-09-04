@@ -434,20 +434,20 @@ async def test_gemini_buyer_client_normalises_sdk_exception() -> None:
 
 async def test_gemini_buyer_client_translates_function_call_response() -> None:
     """A Gemini response with a function_call part becomes a tool_calls BuyerStep
-    whose assistant_content round-trips back through _to_gemini_contents."""
+    whose assistant_content is the EXACT Part Gemini returned, not a
+    reconstruction — this is what preserves thought_signature across turns
+    (see test_thought_signature_survives_history_round_trip)."""
+    from google.genai import types as genai_types
+
     from app.ai.buyer import TOOL_DEFS
 
-    class _FC:
-        id = None
-        name = "search_catalog"
-        args = {"query": "shoes"}
-
-    class _Part:
-        function_call = _FC()
-        text = None
+    real_part = genai_types.Part(
+        function_call=genai_types.FunctionCall(id="call_abc", name="search_catalog", args={"query": "shoes"}),
+        thought_signature=b"opaque-provider-signature",
+    )
 
     class _Content:
-        parts = [_Part()]
+        parts = [real_part]
 
     class _Cand:
         content = _Content()
@@ -473,15 +473,17 @@ async def test_gemini_buyer_client_translates_function_call_response() -> None:
     assert step.kind == "tool_calls"
     assert step.tool_calls[0].name == "search_catalog"
     assert step.tool_calls[0].input == {"query": "shoes"}
-    # assistant_content is neutral blocks the buyer loop can re-feed
-    assert step.assistant_content[0]["type"] == "tool_use"
+    # assistant_content is the exact Part object Gemini returned — never rebuilt.
+    assert step.assistant_content == [real_part]
+    assert step.assistant_content[0].thought_signature == b"opaque-provider-signature"
     # automatic function calling was disabled (no SDK-side loop / cost multiplier)
     assert stub.seen["config"].automatic_function_calling.disable is True
 
 
 def test_neutral_history_translates_to_gemini_contents() -> None:
-    """The provider-neutral message history that app.ai.buyer builds round-trips
-    into Gemini `contents` (user text -> assistant function_call -> user
+    """A scripted/fake client's neutral {"type": "text"|"tool_use", ...} history
+    (never real Gemini objects — see tests/_fakes.py) still round-trips into
+    Gemini `contents` (user text -> assistant function_call -> user
     function_response with the right function name)."""
     from app.ai.client import _to_gemini_contents
 
@@ -503,6 +505,39 @@ def test_neutral_history_translates_to_gemini_contents() -> None:
     fr = contents[2].parts[0].function_response
     assert fr.name == "search_catalog"          # resolved from the tool_use id
     assert fr.response == {"count": 1, "results": []}
+
+
+def test_thought_signature_survives_history_round_trip() -> None:
+    """Regression guard for the exact bug this was fixed for: a real Gemini
+    function-call Part (as _gemini_response_to_buyer_step now stores it in
+    assistant_content) must be replayed VERBATIM on the next turn — same
+    object, thought_signature intact — never rebuilt via
+    Part.from_function_call(name=, args=), which drops thought_signature and
+    makes Gemini reject the following turn with 'Function call is missing a
+    thought_signature in functionCall parts.'"""
+    from google.genai import types as genai_types
+
+    from app.ai.client import _to_gemini_contents
+
+    part = genai_types.Part(
+        function_call=genai_types.FunctionCall(id="call_1", name="search_catalog", args={"query": "road"}),
+        thought_signature=b"\x01\x02opaque-signature",
+    )
+    history = [
+        {"role": "user", "content": "find road shoes"},
+        {"role": "assistant", "content": [part]},  # exactly what the real client now stores
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "call_1", "content": '{"count": 0, "results": []}'},
+        ]},
+    ]
+    contents = _to_gemini_contents(history)
+    assert [c.role for c in contents] == ["user", "model", "user"]
+    replayed = contents[1].parts[0]
+    assert replayed is part, "the assistant turn must replay the exact Part, not a rebuilt one"
+    assert replayed.thought_signature == b"\x01\x02opaque-signature"
+    fr = contents[2].parts[0].function_response
+    assert fr.name == "search_catalog"          # resolved via the real Part's function_call
+    assert fr.response == {"count": 0, "results": []}
 
 
 async def test_buyer_only_ever_sees_four_tools_none_payment(api) -> None:

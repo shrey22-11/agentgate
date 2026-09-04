@@ -363,14 +363,36 @@ def _to_gemini_tools(tools: list[dict]) -> list[genai_types.Tool]:
 
 
 def _to_gemini_contents(messages: list[dict]) -> list[genai_types.Content]:
+    """Translate the provider-neutral history `app.ai.buyer` maintains into
+    Gemini `Content`. An assistant turn's `content` is one of two shapes:
+
+      * a list of raw ``genai_types.Part`` objects — exactly what
+        `_gemini_response_to_buyer_step` stored, i.e. what Gemini itself
+        returned for a real model turn. These are replayed **verbatim**
+        (`Content(role="model", parts=list(content))`) and never rebuilt: a
+        function-call `Part` carries an opaque `thought_signature` the API
+        requires on every later turn for multi-step tool calling, and
+        reconstructing a fresh `Part.from_function_call(name=, args=)` — which
+        has no `thought_signature` — is exactly what makes the API reject the
+        next turn with "Function call is missing a thought_signature".
+      * a list of neutral ``{"type": "text"|"tool_use", ...}`` dict blocks —
+        produced only by a scripted/fake client (tests never construct real
+        Gemini `Part` objects), reconstructed the same way as before.
+    """
     # tool_use id -> function name, so a tool_result can be sent back as a
-    # Gemini function_response (which needs the name, not the id).
+    # Gemini function_response (which needs the name, not the id). Reads both
+    # shapes above.
     id_to_name: dict[str, str] = {}
     for m in messages:
-        if m.get("role") == "assistant" and isinstance(m.get("content"), list):
-            for blk in m["content"]:
-                if isinstance(blk, dict) and blk.get("type") == "tool_use":
-                    id_to_name[blk.get("id", "")] = blk.get("name", "tool")
+        if m.get("role") != "assistant" or not isinstance(m.get("content"), list):
+            continue
+        for blk in m["content"]:
+            if isinstance(blk, genai_types.Part):
+                fc = blk.function_call
+                if fc is not None and fc.name:
+                    id_to_name[fc.id or ""] = fc.name
+            elif isinstance(blk, dict) and blk.get("type") == "tool_use":
+                id_to_name[blk.get("id", "")] = blk.get("name", "tool")
 
     contents: list[genai_types.Content] = []
     for m in messages:
@@ -399,6 +421,13 @@ def _to_gemini_contents(messages: list[dict]) -> list[genai_types.Content]:
                 contents.append(genai_types.Content(role="user", parts=parts))
 
         elif role == "assistant":
+            if isinstance(content, list) and content and all(
+                isinstance(blk, genai_types.Part) for blk in content
+            ):
+                # Real Gemini turn — replay the exact Parts, thought_signature
+                # and all. Do NOT reconstruct these.
+                contents.append(genai_types.Content(role="model", parts=list(content)))
+                continue
             parts = []
             if isinstance(content, str):
                 if content:
@@ -424,33 +453,33 @@ def _to_gemini_contents(messages: list[dict]) -> list[genai_types.Content]:
 
 def _gemini_response_to_buyer_step(response: Any) -> BuyerStep:
     candidates = getattr(response, "candidates", None) or []
-    parts = []
+    parts: list[Any] = []
     if candidates and getattr(candidates[0], "content", None):
-        parts = getattr(candidates[0].content, "parts", None) or []
+        parts = list(getattr(candidates[0].content, "parts", None) or [])
 
     text_bits: list[str] = []
     tool_calls: list[BuyerToolCall] = []
-    neutral: list[dict] = []
     for i, part in enumerate(parts):
         fn = getattr(part, "function_call", None)
         if fn is not None and getattr(fn, "name", None):
-            call_id = getattr(fn, "id", None) or f"call_{i}"
-            args = dict(fn.args or {})
-            tool_calls.append(BuyerToolCall(id=call_id, name=fn.name, input=args))
-            neutral.append({"type": "tool_use", "id": call_id, "name": fn.name, "input": args})
+            if not getattr(fn, "id", None):
+                # Stable synthetic id so BuyerToolCall.id (the tool_use_id a
+                # tool_result is matched back to a function name by) and this
+                # exact Part always agree, even on the rare turn where Gemini
+                # itself omits one.
+                fn.id = f"call_{i}"
+            tool_calls.append(BuyerToolCall(id=fn.id, name=fn.name, input=dict(fn.args or {})))
         elif getattr(part, "text", None):
             text_bits.append(part.text)
-            neutral.append({"type": "text", "text": part.text})
 
     text = "".join(text_bits)
+    # Preserve Gemini's own Parts verbatim as the assistant turn — see
+    # _to_gemini_contents for why these must never be rebuilt from scratch.
+    assistant_content = parts or [genai_types.Part.from_text(text=text or "(no summary)")]
+
     if tool_calls:
-        return BuyerStep(kind="tool_calls", text=text, tool_calls=tool_calls, assistant_content=neutral)
-    summary = text or "(no summary)"
-    return BuyerStep(
-        kind="final",
-        text=summary,
-        assistant_content=neutral or [{"type": "text", "text": summary}],
-    )
+        return BuyerStep(kind="tool_calls", text=text, tool_calls=tool_calls, assistant_content=assistant_content)
+    return BuyerStep(kind="final", text=text or "(no summary)", assistant_content=assistant_content)
 
 
 class GeminiBuyerClient:
