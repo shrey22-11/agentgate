@@ -2,6 +2,12 @@
 
 **A deterministic transaction-control layer between AI agents and a merchant's payment capabilities.** An AI model can understand a request and propose a commercial action; a deterministic policy engine — never the model — decides whether that action is authorised.
 
+## 🚀 Live Demo
+
+**[Visit AgentGate →](https://agentgate-ynup.onrender.com/)**
+
+> The deployed application uses Razorpay Test Mode for payment execution.
+
 ---
 
 ## Overview
