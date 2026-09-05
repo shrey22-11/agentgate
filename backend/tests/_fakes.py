@@ -22,7 +22,7 @@ class FakeAIParserClient:
     """
     Stands in for `app.ai.client.AIParserClient`. Give it either a `result`
     (a ParsedIntent to return) or an `error` (an exception to raise). No
-    network, no anthropic SDK.
+    network, no provider SDK.
     """
 
     def __init__(

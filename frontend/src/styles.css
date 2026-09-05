@@ -1,40 +1,52 @@
 /* ======================================================================
    AgentGate — design system
-   Light, minimal, fintech-dashboard aesthetic. Premium via spacing,
-   typography and hierarchy — not gradients, glass or motion.
+   Dark, minimal, fintech control-plane aesthetic. Premium via spacing,
+   typography, hierarchy and border contrast — not gradients, glass or
+   motion. Every colour is a token here; components reference var(--*)
+   only, so this block is the single source of truth for the theme.
    ====================================================================== */
 
 :root {
-  --bg-0: #f6f7fb;
-  --bg-1: #ffffff;
-  --bg-2: #eef0f6;
-  --surface: #ffffff;
-  --surface-2: #f4f5f9;
-  --stroke: #e4e7ef;
-  --stroke-2: #d7dbe7;
+  /* Page + surfaces — deep, blue-undertoned charcoal (never pure black).
+     Recessed insets (--bg-2) sit BELOW cards; raised nests (--surface-2)
+     sit a notch above them. */
+  --bg-0: #0b0d13;
+  --bg-1: #101319;
+  --bg-2: #0d1017;
+  --surface: #15181f;
+  --surface-2: #1c202b;
+  --stroke: #272c39;
+  --stroke-2: #353c4c;
 
-  --text-0: #11131c;
-  --text-1: #3d4257;
-  --text-2: #6b7086;
-  --text-3: #979cb0;
+  /* Text — soft white down to muted; every tier stays legible on --surface
+     (--text-3 is for metadata/labels only, ~4:1). */
+  --text-0: #f2f4f9;
+  --text-1: #c8ced9;
+  --text-2: #99a1b3;
+  --text-3: #7e8798;
 
-  --brand: #3355f4;
-  --brand-2: #7c5cff;
-  --brand-ink: #2544d1;
-  --cyan: #0891b2;
+  /* Brand — brightened so it carries on dark. --brand-ink is LIGHTER than
+     --brand here (dark-mode hover = brighten, not darken). */
+  --brand: #4d6cf5;
+  --brand-2: #9a80ff;
+  --brand-ink: #7a94ff;
+  --cyan: #35b3d6;
 
-  --allow: #0f9d63;
-  --deny: #dc2626;
-  --approval: #b45309;
-  --counter: #0d7fa6;
+  /* Verdict semantics — brightened for dark, kept clearly distinct from
+     each other (counter stays teal, approval stays amber — they must be
+     tellable apart). Never the only channel: icon + label + rule id too. */
+  --allow: #33cc85;
+  --deny: #ef5b62;
+  --approval: #e7a94b;
+  --counter: #40b2da;
 
   --radius: 16px;
   --radius-sm: 10px;
   --radius-lg: 20px;
 
-  --shadow-1: 0 1px 2px rgba(17, 19, 28, 0.04), 0 1px 1px rgba(17, 19, 28, 0.03);
-  --shadow-md: 0 10px 30px -14px rgba(17, 19, 28, 0.16), 0 2px 6px -2px rgba(17, 19, 28, 0.06);
-  --shadow-lift: 0 16px 40px -18px rgba(17, 19, 28, 0.22);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 1px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 14px 34px -16px rgba(0, 0, 0, 0.62), 0 3px 8px -3px rgba(0, 0, 0, 0.45);
+  --shadow-lift: 0 22px 52px -20px rgba(0, 0, 0, 0.72);
 
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -66,8 +78,8 @@ body {
   z-index: 0;
   overflow: hidden;
   background:
-    radial-gradient(1100px 560px at 10% -12%, rgba(51, 85, 244, 0.05), transparent 60%),
-    radial-gradient(900px 520px at 100% 0%, rgba(124, 92, 255, 0.045), transparent 55%),
+    radial-gradient(1100px 560px at 10% -12%, rgba(77, 108, 245, 0.10), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(154, 128, 255, 0.07), transparent 55%),
     var(--bg-0);
 }
 
@@ -104,7 +116,7 @@ body {
   height: 34px;
   border-radius: 10px;
   background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  box-shadow: 0 6px 16px -6px rgba(51, 85, 244, 0.55);
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--brand) 60%, transparent);
   display: grid;
   place-items: center;
   color: #fff;
@@ -147,7 +159,7 @@ body {
 }
 .nav-item[aria-current="true"] {
   color: var(--brand-ink);
-  background: #eef1ff;
+  background: color-mix(in srgb, var(--brand) 15%, transparent);
   font-weight: 650;
 }
 .nav-item[aria-current="true"] .nav-item__ico {
@@ -167,7 +179,7 @@ body {
   padding: 0 6px;
   border-radius: 999px;
   background: var(--approval);
-  color: #fff;
+  color: var(--bg-0); /* dark text — the amber is bright on dark, white would be low-contrast */
   font-size: 11px;
   font-weight: 800;
   display: grid;
@@ -322,23 +334,23 @@ body {
 }
 .v-allow {
   color: var(--allow);
-  background: rgba(15, 157, 99, 0.09);
-  border-color: rgba(15, 157, 99, 0.28);
+  background: color-mix(in srgb, var(--allow) 15%, transparent);
+  border-color: color-mix(in srgb, var(--allow) 40%, transparent);
 }
 .v-deny {
   color: var(--deny);
-  background: rgba(220, 38, 38, 0.08);
-  border-color: rgba(220, 38, 38, 0.25);
+  background: color-mix(in srgb, var(--deny) 15%, transparent);
+  border-color: color-mix(in srgb, var(--deny) 38%, transparent);
 }
 .v-needs_approval {
   color: var(--approval);
-  background: rgba(180, 83, 9, 0.09);
-  border-color: rgba(180, 83, 9, 0.25);
+  background: color-mix(in srgb, var(--approval) 15%, transparent);
+  border-color: color-mix(in srgb, var(--approval) 38%, transparent);
 }
 .v-counter_offer {
   color: var(--counter);
-  background: rgba(13, 127, 166, 0.09);
-  border-color: rgba(13, 127, 166, 0.25);
+  background: color-mix(in srgb, var(--counter) 15%, transparent);
+  border-color: color-mix(in srgb, var(--counter) 38%, transparent);
 }
 .chip {
   display: inline-flex;
@@ -385,7 +397,7 @@ body {
 }
 .btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(51, 85, 244, 0.28);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 55%, transparent);
 }
 .btn:disabled {
   opacity: 0.55;
@@ -405,7 +417,7 @@ body {
   background: var(--deny);
 }
 .btn--danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: color-mix(in srgb, var(--deny) 80%, #ffffff);
 }
 .btn--sm {
   padding: 7px 12px;
@@ -450,16 +462,21 @@ body {
   resize: vertical;
   line-height: 1.5;
 }
+.input::placeholder,
+.textarea::placeholder,
+.combo__search input::placeholder {
+  color: var(--text-3);
+}
 .input:focus,
 .select:focus,
 .textarea:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(51, 85, 244, 0.14);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 .select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236b7086' stroke-width='2'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b93a5' stroke-width='2'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 34px;
@@ -583,8 +600,8 @@ table.tbl {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(13, 127, 166, 0.06);
-  border: 1px solid rgba(13, 127, 166, 0.22);
+  background: color-mix(in srgb, var(--counter) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--counter) 32%, transparent);
   display: flex;
   align-items: baseline;
   gap: 14px;
@@ -651,7 +668,7 @@ table.tbl {
   height: 10px;
   border-radius: 50%;
   background: var(--brand);
-  box-shadow: 0 0 0 4px rgba(51, 85, 244, 0.14);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 28%, transparent);
 }
 .chain__node::after {
   content: "";
@@ -855,8 +872,8 @@ table.tbl {
   margin: 0;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(124, 92, 255, 0.05);
-  border: 1px solid rgba(124, 92, 255, 0.16);
+  background: color-mix(in srgb, var(--brand-2) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-2) 26%, transparent);
   font-size: 12px;
   color: var(--text-0);
 }
@@ -954,8 +971,8 @@ table.tbl {
 .negotiate__offer {
   padding: 16px 18px;
   border-radius: 14px;
-  background: rgba(13, 127, 166, 0.06);
-  border: 1px solid rgba(13, 127, 166, 0.22);
+  background: color-mix(in srgb, var(--counter) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--counter) 32%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1061,7 +1078,7 @@ table.tbl {
 .combo__trigger[aria-expanded="true"] {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(51, 85, 244, 0.14);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 .combo__trigger-text {
   display: flex;
@@ -1457,19 +1474,19 @@ table.tbl {
   margin: 0 auto 20px;
 }
 .status-icon--ok {
-  background: rgba(15, 157, 99, 0.1);
+  background: color-mix(in srgb, var(--allow) 16%, transparent);
   color: var(--allow);
 }
 .status-icon--bad {
-  background: rgba(220, 38, 38, 0.1);
+  background: color-mix(in srgb, var(--deny) 16%, transparent);
   color: var(--deny);
 }
 .status-icon--warn {
-  background: rgba(180, 83, 9, 0.1);
+  background: color-mix(in srgb, var(--approval) 16%, transparent);
   color: var(--approval);
 }
 .status-icon--info {
-  background: rgba(51, 85, 244, 0.1);
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
   color: var(--brand);
 }
 .result-card h1 {
@@ -1568,7 +1585,7 @@ table.tbl {
   height: 8px;
   border-radius: 50%;
   background: var(--allow);
-  box-shadow: 0 0 0 0 rgba(15, 157, 99, 0.5);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--allow) 55%, transparent);
   animation: ring 2s infinite;
 }
 .pulse-dot--off {
@@ -1577,16 +1594,16 @@ table.tbl {
 }
 @keyframes ring {
   70% {
-    box-shadow: 0 0 0 7px rgba(15, 157, 99, 0);
+    box-shadow: 0 0 0 7px transparent;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(15, 157, 99, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
 .skeleton {
   border-radius: 10px;
-  background: linear-gradient(90deg, var(--bg-2), #f9fafc, var(--bg-2));
+  background: linear-gradient(90deg, var(--surface), var(--surface-2), var(--surface));
   background-size: 200% 100%;
   animation: shimmer 1.3s linear infinite;
 }
@@ -1632,14 +1649,14 @@ table.tbl {
   border: 1px solid;
 }
 .banner--warn {
-  color: #92400e;
-  background: rgba(180, 83, 9, 0.07);
-  border-color: rgba(180, 83, 9, 0.22);
+  color: var(--approval);
+  background: color-mix(in srgb, var(--approval) 12%, transparent);
+  border-color: color-mix(in srgb, var(--approval) 30%, transparent);
 }
 .banner--err {
-  color: #991b1b;
-  background: rgba(220, 38, 38, 0.06);
-  border-color: rgba(220, 38, 38, 0.22);
+  color: var(--deny);
+  background: color-mix(in srgb, var(--deny) 12%, transparent);
+  border-color: color-mix(in srgb, var(--deny) 30%, transparent);
 }
 .banner--info {
   color: var(--text-1);

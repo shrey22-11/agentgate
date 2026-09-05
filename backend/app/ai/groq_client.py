@@ -68,7 +68,7 @@ from app.ai.schemas import ParsedIntent
 _log = logging.getLogger("agentgate.ai")
 
 # Groq keys are `gsk_…` (console.groq.com/keys). Scrubbed from anything
-# logged, mirroring app.ai.client._SECRET_RE for Gemini/Anthropic-shaped keys.
+# logged, mirroring app.ai.client._SECRET_RE for Gemini-shaped keys.
 _GROQ_SECRET_RE = re.compile(r"gsk_[0-9A-Za-z]{20,}")
 
 

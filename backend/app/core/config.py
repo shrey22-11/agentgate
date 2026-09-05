@@ -78,8 +78,7 @@ class Settings(BaseSettings):
     def _normalize_database_url(cls, value: str) -> str:
         return normalize_database_url(value)
 
-    # --- AI provider (single provider: Google Gemini, per Section G;
-    #     migrated from Anthropic Claude 2026-09-04, see docs/architecture-freeze) ---
+    # --- AI provider (Google Gemini, per Section G) ---
     # The app boots without a key as long as ai_enabled is false. When true the
     # key must be present or startup fails clearly. AI is used ONLY to extract a
     # structured ParsedIntent / a buyer-agent proposal — never to decide a

@@ -154,7 +154,7 @@ None. Every graded scenario matched the deterministic engine.
 ## What is simulated or stubbed
 
 - Catalogue, stock, margins and the agent population are SIMULATED.
-- The natural-language parser's model call is stubbed (no Anthropic request) - exactly as every AI test in this repo. The deterministic re-validation, catalogue resolution, confidence gate and the whole policy path are exercised for real.
+- The natural-language parser's model call is stubbed (no Gemini request) - exactly as every AI test in this repo. The deterministic re-validation, catalogue resolution, confidence gate and the whole policy path are exercised for real.
 - RAZORPAY_ENABLED is false: no Razorpay object is created anywhere in this suite. Payment-execution idempotency is checked at the database constraint level.
 - Ground truth is computed from app.policy.evaluate on authoritative seed data; no scenario carries a hand-written verdict.
 - Latency is in-process ASGI against a local PostgreSQL, single threaded and warm - not a production latency claim.

@@ -17,9 +17,8 @@ a payment — those belong to the deterministic policy engine downstream.
 Cost protection: one attempt per call (no SDK retries), automatic function
 calling disabled (the SDK never loops tools on its own — the bounded loop in
 `app.ai.buyer` does), thinking disabled, and small `max_output_tokens`.
-Migrated from Anthropic Claude 2026-09-04 (see docs/architecture-freeze.md).
 
-Optional fallback (2026-09-05): when `AI_FALLBACK_ENABLED=true`, `get_ai_client`
+Optional fallback: when `AI_FALLBACK_ENABLED=true`, `get_ai_client`
 / `get_ai_buyer_client` return a `FallbackParserClient` / `FallbackBuyerClient`
 that try Gemini first, always, and fall over to Llama via Groq — imported only
 in the sibling module `app.ai.groq_client` — for exactly one attempt, and only
@@ -46,10 +45,10 @@ from app.core.config import Settings, get_settings
 
 _log = logging.getLogger("agentgate.ai")
 
-# Anything shaped like a Gemini (`AIza…`) or legacy Anthropic (`sk-ant-…`) API
-# key, scrubbed from anything we log or surface. The SDK's exception objects do
-# not carry the key or request headers, but this is a cheap defensive guarantee.
-_SECRET_RE = re.compile(r"AIza[0-9A-Za-z_\-]{20,}|sk-ant-[A-Za-z0-9_\-]+")
+# Anything shaped like a Gemini API key (`AIza…`), scrubbed from anything we log
+# or surface. The SDK's exception objects do not carry the key or request
+# headers, but this is a cheap defensive guarantee.
+_SECRET_RE = re.compile(r"AIza[0-9A-Za-z_\-]{20,}")
 
 # Conservative generation limits (see module docstring — cost protection).
 _PARSE_MAX_OUTPUT_TOKENS = 1024

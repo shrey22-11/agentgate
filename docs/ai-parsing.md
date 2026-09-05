@@ -208,5 +208,4 @@ config validator; and an import guard that `app/ai/` never imports
 
 All Phase 9 behaviour is tested with the fake client. A live check (set
 `AI_ENABLED=true` + a real `GEMINI_API_KEY`, `POST /ai/actions`) has **not** been
-run from this environment. Provider migrated Anthropic → Google Gemini
-2026-09-04 (see docs/architecture-freeze.md).
+run from this environment.

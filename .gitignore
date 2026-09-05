@@ -15,4 +15,5 @@ frontend/dist/
 
 # misc
 .DS_Store
+.claude/
 

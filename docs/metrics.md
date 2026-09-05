@@ -39,7 +39,7 @@ runs. It needs Postgres up (`docker compose up -d db`). No other infrastructure.
 | **Money invariant** | Zero `payment_attempt` rows and zero Razorpay objects created across every benign / violating / adversarial scenario. |
 
 **Not measured, not claimed:** no revenue, conversion, AOV, or business-impact
-figure of any kind (see the README honesty section and `CLAUDE.md` §5).
+figure of any kind (see the README honesty-labels section).
 
 ---
 
@@ -139,7 +139,7 @@ deployment SLO.
 ## What is simulated or stubbed
 
 - **Catalogue, stock, margins, agent population** — SIMULATED seed data.
-- **The natural-language parser's model call is stubbed** (no Anthropic
+- **The natural-language parser's model call is stubbed** (no Gemini
   request), exactly as every AI test in this repo. The deterministic
   re-validation, catalogue resolution, confidence gate and the entire policy
   path run for real. Model-output validity is therefore *not* measured here —

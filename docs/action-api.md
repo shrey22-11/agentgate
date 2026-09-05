@@ -189,7 +189,7 @@ are duplicated.
 
 ## What Phase 6 does NOT do
 
-- **No LLM.** The endpoint works with no `ANTHROPIC_API_KEY`. Natural-language
+- **No LLM.** The endpoint works with no `GEMINI_API_KEY`. Natural-language
   parsing and the AI buyer agent are Phase 9/10.
 - **No Razorpay execution.** An `ALLOW` means *policy permits the action* — no
   order, no payment link, no charge. Payment execution is a later phase.

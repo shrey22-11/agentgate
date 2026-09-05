@@ -1,8 +1,13 @@
-# AgentGate — Track 1 Phase 0: Research, Critical Evaluation, Architecture Freeze Proposal
+# AgentGate — Architecture Record (Track 1)
 
 **Date:** 3 September 2026
-**Status:** PHASE 0. Not approved. No implementation until you sign off on Section Q.
-**Supersedes:** the Track 3 "Recur" plan entirely (not referenced further, per your instruction), and folds in / restructures the Track 1 research already done today into the exact format you asked for.
+
+Research, critical evaluation, and the frozen architecture decisions for
+AgentGate — the merchant-side decision/control layer built for the Razorpay
+AI Buildathon, Track 1 (AI Growth & Agentic Commerce). Later sections
+(F–Q) capture the stack comparison, schema, integration boundaries, demo
+plan, and the pre-agreed cut order; the implementation follows these
+decisions.
 
 ---
 
@@ -16,7 +21,7 @@ Track 01 — AI Growth & Agentic Commerce. Objective: "Grow the merchant's reven
 
 **INFERENCE:** the phrase "one failure handled gracefully" is singular and specific — this reads as a demo-structure instruction (stage exactly one failure well), not a request for a failure catalogue.
 
-**UNVERIFIED (third-party only, repeated across multiple sources, not on the official page):** applications close 5 September. **Today is 3 September.** I flagged this in the prior document and am flagging it again here because it changes how much of this spec is buildable. Confirm on the actual application form before scoping Phase 2 onward.
+**UNVERIFIED (third-party only, repeated across multiple sources, not on the official page):** applications close 5 September. As of this document's date (3 September) that leaves a short window, which constrains how much of the full vision is buildable — the scope below is set accordingly.
 
 ---
 
@@ -47,21 +52,21 @@ Verified today against official/primary sources.
 
 **Strengths**
 - Maps clause-for-clause onto the stated bar: explainable (rule id + reason per decision), bounded (deterministic caps, never LLM-decided), gated (approval queue, kill switch), audited (append-only log), one failure demonstrated well (prompt injection denied on camera).
-- The counter-offer addition is a genuine improvement over the version I evaluated earlier today. It turns the system from a pure gate into a decision layer that tries to *complete* the transaction within bounds — closer to what a panel will read as "growth," not just "safety."
+- The counter-offer engine is a genuine improvement over a pure gate. It turns the system into a decision layer that tries to *complete* the transaction within bounds — closer to what a panel will read as "growth," not just "safety."
 - The richer AI buyer agent (search → compare → select → negotiate → accept/reject → checkout) gives the LLM a real, multi-step, stateful job. This directly answers the weakest score in my earlier comparison table (meaningful AI usage), where a bare intent-parser in front of a rules engine scored only 7/10.
 - No ML training component, so no calibration risk, no model-serving risk, no dataset-quality risk — the stack decision is genuinely about backend engineering, not about which language has better numerical libraries.
 - Naturally produces a computable-ground-truth metric (policy verdict is deterministic, so correctness is checkable), which is rare and defensible in front of a panel.
 
 **Weaknesses**
 - Scope has grown since this morning's version: agent identity/permissions, catalog, action requests, policy engine, counter-offer engine, approval gate, Razorpay checkout, audit trail, AI buyer agent, a 100+-scenario harness, and a 5-screen UI. That is a lot of surface for an unknown, possibly very short, remaining window.
-- Two AI surfaces now exist (the merchant-side intent parser *and* the AI buyer agent). Both must be built, both must fail safely, and a panel can ask "why two agents and not one" — you need a crisp answer (one represents an external, untrusted counterparty; the other is the gate that never trusts it) before you say anything else in the demo.
-- The counter-offer engine, if not scoped tightly, is where "AI decides the money action" can quietly creep back in. The spec you wrote is correct that the LLM must not invent the boundary — but the discipline has to survive contact with a tight deadline, where the fastest thing to build is "ask the LLM what a fair counter-offer would be." That must be resisted explicitly, in the code, not just in the design doc.
+- Two AI surfaces exist (the merchant-side intent parser *and* the AI buyer agent). Both must fail safely, and a panel can ask "why two agents and not one" — the answer, stated up front in the demo: one represents an external, untrusted counterparty; the other is the gate that never trusts it.
+- The counter-offer engine, if not scoped tightly, is where "AI decides the money action" can quietly creep back in. The design is clear that the LLM must not invent the boundary — but the discipline has to survive contact with a tight deadline, where the fastest thing to build is "ask the LLM what a fair counter-offer would be." That is resisted explicitly, in the code, not just in the design doc.
 - "It's a rules engine with two LLM wrappers" is a sharper version of the same panel critique as before, and now harder to dismiss with one line, because there's more surface for a skeptical panelist to probe.
 
 **Competition/overlap**
 - Distinct from Agent Studio (governs Razorpay's own agents, not third-party ones) and from UAP (agent identity at the rails, no spec, not merchant commercial policy). One public GitHub project (`AgentPay`, from a different Buildathon participant) implements AP2 mandates + a simulated NPCI trust registry for Track 1 — different mechanism (cryptographic mandates vs. policy/counter-offer engine), so not a direct clone, but worth knowing it exists in case a panelist has seen it.
 
-**Whether we should proceed:** yes, with one condition — treat Section D below as the actual scope, not the full ambition in your brief. The brief as written is a strong *product vision*; it is not, as written, a *two-day build*. If the deadline is confirmed longer, more of it fits. If it's 5 September, Section D cuts it to what proves the thesis and nothing more, and Section P is where the cutting happens explicitly rather than by improvisation at 2am.
+**Scope decision:** Section D below is the actual scope, not the full product ambition. The full vision is a strong *product direction*; it is not a *two-day build*. Section D cuts it to what proves the thesis and nothing more, and Section P is where any further cutting happens explicitly rather than by improvisation.
 
 ---
 
@@ -70,7 +75,7 @@ Verified today against official/primary sources.
 **AgentGate**: a merchant-side decision and control layer that sits between an external AI buyer agent and a merchant's commerce/payment capabilities. It evaluates every commercial request from the agent against merchant-defined policy and returns one of four verdicts — **ALLOW / DENY / NEEDS_APPROVAL / COUNTER_OFFER** — executes only what policy permits through real Razorpay test-mode APIs, and records a provable audit trail of every decision.
 
 Two components, one boundary between them:
-1. **The AI buyer agent** — an LLM-driven agent that pursues a user's shopping goal (e.g. "running shoes under ₹5,000") by searching the catalog, comparing options, requesting commercial terms, and responding to AgentGate's verdicts (including accepting or rejecting a counter-offer). It is a *counterparty*, deliberately modeled as untrusted from AgentGate's point of view even though you also built it — this is the whole point of the demo.
+1. **The AI buyer agent** — an LLM-driven agent that pursues a user's shopping goal (e.g. "running shoes under ₹5,000") by searching the catalog, comparing options, requesting commercial terms, and responding to AgentGate's verdicts (including accepting or rejecting a counter-offer). It is a *counterparty*, deliberately modeled as untrusted from AgentGate's point of view even though it is built in the same repo — this is the whole point of the demo.
 2. **AgentGate itself** — receives structured `ActionRequest`s (from the buyer agent, or from an adversarial/raw-text request in the failure demo), validates them, evaluates them deterministically, and is the only component with authority to touch Razorpay.
 
 **Core principle, unchanged and non-negotiable:** AI understands and proposes; deterministic policy decides. The counter-offer *value* (max discount, floor price) is always a policy-engine computation. The LLM may phrase it, never invent it.
@@ -81,13 +86,13 @@ Two components, one boundary between them:
 
 Razorpay's Agent Studio configures guardrails for agents Razorpay built, running inside Razorpay's own dashboard. NPCI's UAP, unspecified and pending RBI approval, is designed to answer agent *identity and trust* at the payment-rail level, not merchant-specific commercial policy. **AgentGate answers a third, currently-unaddressed question: given an external AI agent Razorpay did not build and the merchant does not control, what is it commercially allowed to do against this specific merchant's catalogue, pricing, and margin — and can the merchant prove, after the fact, exactly why each decision went the way it did?**
 
-State this in the README and in the first 30 seconds of the pitch video, naming Agent Studio and UAP yourself before a panelist raises them.
+This differentiation is stated up front in the README and in the pitch video, naming Agent Studio and NPCI UAP directly as the adjacent-but-distinct efforts.
 
 ---
 
 ## F. STACK COMPARISON
 
-This project has **no ML training component** — the AI work is entirely external LLM calls doing structured extraction, catalog reasoning, and negotiation dialogue. That removes Python's one genuine structural advantage (scikit-learn-class tooling), so the "Python is better for AI" argument is not available here, correctly per your instruction not to accept it generically.
+This project has **no ML training component** — the AI work is entirely external LLM calls doing structured extraction, catalog reasoning, and negotiation dialogue. That removes Python's one genuine structural advantage (scikit-learn-class tooling), so the generic "Python is better for AI" argument does not apply here.
 
 | | **A. Java 21 + Spring Boot** | **B. Python + FastAPI** | **C. Node/NestJS** |
 |---|---|---|---|
@@ -99,7 +104,7 @@ This project has **no ML training component** — the AI work is entirely extern
 | Same-origin SPA serving | Easy | Easy | Easy |
 | Deployment simplicity (single container) | Larger image, slower cold start | Small, fast | Small, fast |
 
-**Where each loses:** Spring Boot loses on ceremony cost against your top stated priority (deployment reliability and speed, not raw capability) — it is not technically worse, it is more expensive to build correctly under a tight or unknown deadline. NestJS loses only in that Python's structured-output ecosystem (Pydantic + LLM SDKs) is a slightly better-worn path for exactly the "validate untrusted JSON from an LLM before it can touch money" pattern that is this project's central discipline — a real but modest edge, not a category difference.
+**Where each loses:** Spring Boot loses on ceremony cost against the top priority here (deployment reliability and speed, not raw capability) — it is not technically worse, it is more expensive to build correctly under a tight or unknown deadline. NestJS loses only in that Python's structured-output ecosystem (Pydantic + LLM SDKs) is a slightly better-worn path for exactly the "validate untrusted JSON from an LLM before it can touch money" pattern that is this project's central discipline — a real but modest edge, not a category difference.
 
 ---
 
@@ -107,13 +112,11 @@ This project has **no ML training component** — the AI work is entirely extern
 
 **Python 3.12 + FastAPI + PostgreSQL 16 + React/TypeScript**, served same-origin (backend serves the built SPA), single container, single database, one AI provider.
 
-**Why it wins here, specifically:** Pydantic v2 gives you, almost for free, the exact discipline your own spec demands — untrusted LLM output is coerced into a typed model or it is rejected before the policy engine ever sees it. That is not a generic "Python is good at AI" claim; it is a specific fit between one library and this project's central safety mechanism. Everything else (idempotency, transactions, webhook handling, same-origin serving) is equivalent across all three options.
+**Why it wins here, specifically:** Pydantic v2 gives, almost for free, the exact discipline this design demands — untrusted LLM output is coerced into a typed model or it is rejected before the policy engine ever sees it. That is not a generic "Python is good at AI" claim; it is a specific fit between one library and this project's central safety mechanism. Everything else (idempotency, transactions, webhook handling, same-origin serving) is equivalent across all three options.
 
-**Caveat to record honestly:** if you are meaningfully faster writing TypeScript than Python, Option C is a legitimate and defensible substitute — it removes a language boundary between frontend and backend entirely, which also serves your "fewest moving parts" priority. Choose on your own fluency under time pressure, not on this recommendation alone.
+**Caveat recorded honestly:** Option C (Node/NestJS) is a legitimate and defensible substitute — it removes a language boundary between frontend and backend entirely, which also serves the "fewest moving parts" priority. The choice here comes down to build speed under time pressure, not a category difference.
 
-**AI provider:** one provider, called directly via HTTPS/SDK, no agent framework (no LangChain). The intent-parser and the AI buyer agent both use JSON-schema-constrained structured output / function calling — reliable structured output is the load-bearing requirement here, and it is a good match for "never trust raw text output."
-
-> **Migration note — 2026-09-04:** the provider was changed from **Anthropic Claude** to **Google Gemini** (`google-genai` SDK, default model `gemini-2.5-flash`). Reason: no Anthropic API credits were available and the maintainer opted for Gemini's free-tier eligibility rather than funding an Anthropic account. This is a provider swap only — the single-provider, no-framework, fail-closed, "AI proposes / deterministic policy decides" architecture is unchanged; the `google-genai` SDK is still confined to `app/ai/client.py`; `ParsedIntent` (re-validated by Pydantic) is still the only thing the parser LLM produces; every provider failure still fails closed to a persisted `DENY / RULE_INPUT_INVALID`. Free-tier eligibility and limits are set by Google and can change — not a guarantee of free usage. `CLAUDE.md`'s frozen-decisions table still names "Claude API" and predates this note.
+**AI provider:** called directly via SDK, no agent framework (no LangChain). The intent-parser and the AI buyer agent both use JSON-schema-constrained structured output / function calling — reliable structured output is the load-bearing requirement here, and it is a good match for "never trust raw text output." The primary provider is **Google Gemini** (`google-genai` SDK, default model `gemini-2.5-flash`), confined to `app/ai/client.py`. An **optional Groq fallback** (`app/ai/groq_client.py`, `AI_FALLBACK_ENABLED`, off by default) retries a single transient Gemini failure via Llama before failing closed — Gemini stays the default provider, and the fail-closed, "AI proposes / deterministic policy decides" architecture is identical on both paths.
 
 ---
 
@@ -176,7 +179,7 @@ One process. No queue, no scheduler, no cache layer — every decision is synchr
 
 ## K. DATABASE DESIGN
 
-Minimal, intentional schema — not every entity in your brief needs to be a separate table on day one; several are folded together where a join gains nothing.
+Minimal, intentional schema — not every entity in the product vision needs to be a separate table on day one; several are folded together where a join gains nothing.
 
 - **merchant** — id, name, policy_version (current)
 - **product** — id, merchant_id, name, category, price, stock, max_discount_pct, min_margin_price
@@ -246,8 +249,6 @@ No microservices, no Kafka/Redis/Celery/RabbitMQ, no Kubernetes, no second datab
 
 ---
 
-## Q. ARCHITECTURE FREEZE RECOMMENDATION
+## Q. ARCHITECTURE FREEZE
 
-I recommend freezing on: **Section D's project definition, Section G's stack (Python/FastAPI/Postgres/React, NestJS as a fluency-based alternative), Section H's architecture, Section I's Razorpay integration boundaries, and Section K's schema**, with Section P's cut order pre-agreed so that a short deadline produces a smaller honest project rather than a rushed dishonest one.
-
-**Before I implement anything, I need one thing from you:** confirmation of the actual deadline from the application form. That single fact determines whether Section P's cuts apply from day one or only as a contingency. Everything else in this document I'm confident enough in to build against — say the word and I'll start Phase 2 (scaffolding: repo, backend/frontend/DB boot, health checks, one real webhook landing) exactly as ordered in your Section 19.
+The frozen decisions: **Section D's project definition, Section G's stack (Python/FastAPI/Postgres/React), Section H's architecture, Section I's Razorpay integration boundaries, and Section K's schema**, with Section P's cut order pre-agreed so that a short deadline produces a smaller honest project rather than a rushed dishonest one. Implementation proceeds against these; the scaffolding step comes first — repo, backend/frontend/DB boot, health checks, and one real test-mode webhook landing before feature code.

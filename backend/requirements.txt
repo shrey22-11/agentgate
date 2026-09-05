@@ -17,8 +17,7 @@ python-dotenv==1.0.1
 # that dependency. Verified importable here.
 razorpay==2.0.1
 # google-genai (the current unified Google GenAI SDK; NOT the deprecated
-# `google-generativeai`). AI provider migrated from Anthropic Claude to Google
-# Gemini 2026-09-04 — no Anthropic credits available; Gemini has a free tier
+# `google-generativeai`) — the primary AI provider. Gemini has a free tier
 # (limits set by Google, not guaranteed free). Pinned to 1.75.0: google-genai
 # 2.x requires pydantic>=2.12.5, and this project pins pydantic==2.10.3.
 google-genai==1.75.0

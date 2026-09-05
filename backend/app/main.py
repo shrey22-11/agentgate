@@ -1,12 +1,12 @@
 """
 AgentGate backend entrypoint.
 
-PHASE 2 SCOPE ONLY (per the architecture-freeze doc, Section 19 / Phase 2):
-  - backend starts
-  - frontend is served same-origin (no CORS surface exists at all)
-  - database connectivity is verified via /health
-  - no feature modules (catalog, policy, ai, razorpay, ...) are wired
-    into routes yet — those are Phase 3 onward.
+  - creates the FastAPI app from typed settings
+  - exposes /health (liveness + a single DB dependency check)
+  - registers every feature router (actions, ai, approvals, payments,
+    webhooks, audit, catalog, dashboard)
+  - serves the built React SPA same-origin, so no CORS surface exists at all
+    (deliberate — see the architecture-freeze doc, Sections H / L).
 """
 from pathlib import Path
 

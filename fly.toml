@@ -4,15 +4,15 @@
 #   fly launch --no-deploy --copy-config --name agentgate
 #   fly postgres create --name agentgate-db
 #   fly postgres attach agentgate-db          # sets DATABASE_URL as a secret
-#   fly secrets set ANTHROPIC_API_KEY=sk-ant-placeholder \
-#                   RAZORPAY_KEY_ID=rzp_test_placeholder \
+#   fly secrets set RAZORPAY_KEY_ID=rzp_test_placeholder \
 #                   RAZORPAY_KEY_SECRET=placeholder_secret \
 #                   RAZORPAY_WEBHOOK_SECRET=placeholder_webhook_secret
 #   fly deploy
 #
-# The 4 credential secrets must be present (any non-empty value) even while
-# AI/Razorpay are disabled; replace them with real values via `fly secrets set`
-# and flip the *_ENABLED flags when ready.
+# The 3 Razorpay credential secrets must be present (any non-empty value) even
+# while Razorpay is disabled; replace them with real values via `fly secrets
+# set` and flip RAZORPAY_ENABLED when ready. For live AI, also set
+# GEMINI_API_KEY (and, optionally, GROQ_API_KEY) and flip AI_ENABLED.
 
 app = "agentgate"
 primary_region = "sin"
@@ -26,7 +26,7 @@ primary_region = "sin"
   SEED_ON_START = "true"             # load the SIMULATED demo data on first boot (idempotent)
   AI_ENABLED = "false"
   RAZORPAY_ENABLED = "false"
-  AI_MODEL = "claude-opus-5"
+  AI_MODEL = "gemini-2.5-flash"
   AI_REQUEST_TIMEOUT_SECONDS = "20"
   AI_PARSE_CONFIDENCE_THRESHOLD = "0.6"
   AI_BUYER_MAX_STEPS = "8"

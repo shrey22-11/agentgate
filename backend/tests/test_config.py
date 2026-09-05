@@ -57,7 +57,6 @@ def test_settings_accepts_a_bare_managed_url(monkeypatch: pytest.MonkeyPatch) ->
     from app.core.config import Settings
 
     monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h:5432/db?sslmode=require")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_x")
     monkeypatch.setenv("RAZORPAY_KEY_SECRET", "x")
     monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", "x")

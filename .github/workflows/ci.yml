@@ -26,9 +26,9 @@ jobs:
     env:
       # conftest.py points tests at agentgate_test on localhost:5544 regardless;
       # these satisfy the required settings fields for collection + alembic.
+      # AI_ENABLED defaults false, so no GEMINI_API_KEY / AI_MODEL is needed here
+      # (conftest.py supplies test defaults for those).
       DATABASE_URL: postgresql+asyncpg://agentgate:agentgate_local_dev@localhost:5544/agentgate
-      ANTHROPIC_API_KEY: sk-ant-ci-not-a-real-key
-      AI_MODEL: claude-sonnet-4-5
       RAZORPAY_KEY_ID: rzp_test_ci
       RAZORPAY_KEY_SECRET: ci_secret
       RAZORPAY_WEBHOOK_SECRET: ci_webhook_secret

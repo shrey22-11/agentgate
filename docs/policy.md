@@ -14,7 +14,7 @@ Phase 4 is decision logic only. It does **not**:
 - expose an HTTP endpoint,
 - persist a `decision` row (Phase 5),
 - move money or call Razorpay (Phase 8),
-- call Anthropic or handle prompt injection (Phase 9),
+- call the AI parser or handle prompt injection (Phase 9),
 - run approval workflow (Phase 6).
 
 ## The four verdicts
