@@ -61,13 +61,13 @@ services:
 
       # --- Razorpay TEST MODE — disabled until real test-mode keys are set ---
       - key: RAZORPAY_ENABLED
-        value: "false"
+        value: "true"
       - key: RAZORPAY_KEY_ID
-        value: rzp_test_placeholder
+        sync: false
       - key: RAZORPAY_KEY_SECRET
-        value: placeholder_secret
+        sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
-        value: placeholder_webhook_secret
+        sync: false
 
       - key: DEFAULT_MAX_DISCOUNT_PCT
         value: "10.0"
