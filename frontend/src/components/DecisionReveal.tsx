@@ -1,15 +1,22 @@
 import type { Decision } from "../api";
-import { cx, inr } from "../ui";
+import { Icon, cx, inr } from "../ui";
 
-/** The hero "AgentGate Decision" card. Colour + glow keyed to the verdict.
+const VERDICT_ICON: Record<string, string> = {
+  ALLOW: "shield",
+  DENY: "close",
+  NEEDS_APPROVAL: "gavel",
+  COUNTER_OFFER: "swap",
+};
+
+/** The hero "AgentGate Decision" card — a colour + icon keyed to the verdict.
  *  Give it a changing React `key` from the caller to re-trigger the reveal. */
 export function DecisionReveal({ decision }: { decision: Decision }) {
   const v = decision.verdict;
   return (
     <div className={cx("decision", `d-${v.toLowerCase()}`)}>
-      <div className="decision__glow" />
       <div style={{ position: "relative" }}>
         <div className="decision__verdict">
+          <Icon name={VERDICT_ICON[v] ?? "info"} size={24} />
           {v.replace(/_/g, " ")}
           <span className="chip chip--mono">{decision.rule_id}</span>
         </div>

@@ -9,7 +9,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ApiError, type Verdict } from "./api";
+import { ApiError, type Product, type Verdict } from "./api";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -19,6 +19,18 @@ export function inr(v: string | number | null | undefined): string {
   const n = typeof v === "string" ? Number(v) : v;
   if (Number.isNaN(n)) return String(v);
   return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+/**
+ * The lowest unit price a COUNTER_OFFER could ever land on for this product —
+ * display only, mirrors `app.counter_offer.compute_floor`'s formula
+ * (max(list price at the discount cap, margin floor)) over already-public
+ * catalogue fields. Never used to gate, decide, or submit anything: the real
+ * figure always comes back on `decision.counter_offer.price` from the
+ * deterministic engine.
+ */
+export function floorAtCap(p: Pick<Product, "price" | "max_discount_pct" | "min_margin_price">): number {
+  const atCap = Number(p.price) * (1 - Number(p.max_discount_pct) / 100);
+  return Math.max(atCap, Number(p.min_margin_price));
 }
 export const shortHash = (h: string, n = 10) =>
   !h ? "" : h === "0".repeat(64) ? "GENESIS" : h.slice(0, n) + "…";
@@ -84,6 +96,44 @@ export function Field({
 
 export function Spinner() {
   return <span className="spinner" />;
+}
+
+/** A stock-aware +/- quantity control. Display/UX only — the backend
+ *  (`RULE_STOCK_AVAILABLE`) remains the sole authority on whether a quantity
+ *  is actually fulfillable; `max` here just keeps the control from inviting an
+ *  obviously-doomed request. */
+export function Stepper({
+  value,
+  onChange,
+  min = 1,
+  max,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max: number;
+}) {
+  return (
+    <div className="stepper">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        disabled={value <= min}
+        aria-label="Decrease quantity"
+      >
+        −
+      </button>
+      <span className="stepper__value">{value}</span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        aria-label="Increase quantity"
+      >
+        +
+      </button>
+    </div>
+  );
 }
 
 export function Skeleton({ h = 16, w = "100%", style }: { h?: number; w?: number | string; style?: CSSProperties }) {
@@ -224,6 +274,8 @@ const PATHS: Record<string, ReactNode> = {
   spark: <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z" />,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
   close: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></>,
+  swap: <><path d="M4 8h13M13 4l4 4-4 4" /><path d="M20 16H7M11 12l-4 4 4 4" /></>,
 };
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {
   return (

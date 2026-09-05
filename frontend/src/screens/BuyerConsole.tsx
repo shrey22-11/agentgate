@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   api,
@@ -12,7 +12,9 @@ import {
   Field,
   Icon,
   Skeleton,
+  Stepper,
   cx,
+  floorAtCap,
   inr,
   titleCase,
   useAsync,
@@ -22,6 +24,7 @@ import { DecisionReveal } from "../components/DecisionReveal";
 import { BuyerTranscript } from "../components/BuyerTranscript";
 import { PurchaseSummary } from "../components/PurchaseSummary";
 import { PaymentAction } from "../components/PaymentAction";
+import { AgentSelect, ProductSelect } from "../components/Selectors";
 
 type Mode = "manual" | "parse" | "agent";
 
@@ -70,6 +73,23 @@ export function BuyerConsole({ onNavigate }: { onNavigate: (v: "approvals") => v
     () => products.find((p) => p.id === effectiveProduct) ?? null,
     [products, effectiveProduct],
   );
+  // A UX ceiling only — RULE_STOCK_AVAILABLE on the backend remains the real
+  // authority. Keeps the stepper from inviting an obviously-doomed request
+  // without ever hiding or blocking the (deliberately still selectable)
+  // out-of-stock demo path.
+  const maxQty = Math.max(1, selectedProduct?.stock ?? 20);
+  useEffect(() => {
+    setQty((q) => Math.min(q, maxQty));
+  }, [maxQty]);
+
+  // Preview only — never the source of truth for what gets charged. Uses the
+  // same list-price/discount inputs the request itself will send; the actual
+  // amount always comes back on decision.executable_amount.
+  const previewUnit = selectedProduct
+    ? Number(selectedProduct.price) * (1 - discount / 100)
+    : 0;
+  const previewTotal = previewUnit * qty;
+  const withinPolicy = selectedProduct ? discount <= Number(selectedProduct.max_discount_pct) : true;
 
   // Only Structured mode has a trustworthy product id + quantity as plain
   // client state; Natural Language exposes the same fields once resolved, so
@@ -161,41 +181,73 @@ export function BuyerConsole({ onNavigate }: { onNavigate: (v: "approvals") => v
             <Banner kind="err">Couldn't load agents/products: {meta.error.message}</Banner>
           ) : (
             <>
-              <Field label="Acting as agent" hint={
-                activeAgent
-                  ? `${activeAgent.status} · cap ${inr(activeAgent.max_transaction_amount)} · ${activeAgent.allowed_actions.join(", ") || "no actions"}`
-                  : undefined
-              }>
-                <select className="select" value={effectiveAgent} onChange={(e) => setAgentId(e.target.value)}>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} — {a.type}
-                    </option>
-                  ))}
-                </select>
+              <Field label="Acting as agent">
+                <AgentSelect agents={agents} value={effectiveAgent} onChange={setAgentId} />
               </Field>
 
               {mode === "manual" && (
                 <>
                   <Field label="Product">
-                    <select className="select" value={effectiveProduct} onChange={(e) => setProductId(e.target.value)}>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — {inr(p.price)} · {p.stock} in stock
-                        </option>
-                      ))}
-                    </select>
+                    <ProductSelect products={products} value={effectiveProduct} onChange={setProductId} />
                   </Field>
+
+                  {selectedProduct && (
+                    <div className="pinfo">
+                      <div className="pinfo__name">{selectedProduct.name}</div>
+                      <div className="pinfo__cat">{titleCase(selectedProduct.category)}</div>
+                      <div className="pinfo__price">{inr(selectedProduct.price)}</div>
+                      <div className="pinfo__stock">
+                        {selectedProduct.stock > 0 ? `${selectedProduct.stock} available` : "Out of stock"}
+                      </div>
+                      <div className="pinfo__foot">
+                        <span>{selectedProduct.max_discount_pct}% maximum discount</span>
+                        <span>{inr(floorAtCap(selectedProduct))} policy floor</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid cols-2">
-                    <Field label={`Quantity — ${qty}`}>
-                      <input className="range" type="range" min={1} max={20} value={qty}
-                        onChange={(e) => setQty(Number(e.target.value))} />
+                    <Field label="Quantity">
+                      <Stepper value={qty} onChange={setQty} max={maxQty} />
                     </Field>
                     <Field label={`Requested discount — ${discount}%`}>
                       <input className="range" type="range" min={0} max={80} value={discount}
                         onChange={(e) => setDiscount(Number(e.target.value))} />
+                      {selectedProduct && (
+                        <div className="discount-hint">
+                          <span className="discount-hint__policy">
+                            Policy maximum: {selectedProduct.max_discount_pct}%
+                          </span>
+                          <span
+                            className={cx(
+                              "discount-hint__status",
+                              withinPolicy ? "discount-hint__status--ok" : "discount-hint__status--over",
+                            )}
+                          >
+                            {withinPolicy ? "Within policy" : "Above policy → counter-offer likely"}
+                          </span>
+                        </div>
+                      )}
                     </Field>
                   </div>
+
+                  {selectedProduct && (
+                    <div className="preview">
+                      <div className="preview__label">Preview — not the final amount</div>
+                      <div className="preview__row">
+                        <span>{qty} × {selectedProduct.name}</span>
+                        <span className="num">{inr(selectedProduct.price)}</span>
+                      </div>
+                      <div className="preview__row">
+                        <span>Requested discount</span>
+                        <span className="num">{discount}%</span>
+                      </div>
+                      <div className="preview__total">
+                        <span>Requested total</span>
+                        <span>{inr(previewTotal)}</span>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 

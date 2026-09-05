@@ -22,6 +22,9 @@ export function PurchaseSummary({
 }) {
   const total = decision.executable_amount != null ? Number(decision.executable_amount) : null;
   const finalUnit = total != null && quantity > 0 ? total / quantity : null;
+  const isCounter = decision.verdict === "COUNTER_OFFER";
+  // Display-only echo of what the customer asked for — never what gets charged.
+  const requestedUnitPrice = Number(product.price) * (1 - requestedDiscountPct / 100);
 
   return (
     <div className="card card--pad">
@@ -39,16 +42,31 @@ export function PurchaseSummary({
           <span>List price</span>
           <span className="num">{inr(product.price)}</span>
         </div>
-        <div className="receipt__row">
-          <span>Requested discount</span>
-          <span className="num">{requestedDiscountPct}%</span>
-        </div>
-        {decision.verdict === "COUNTER_OFFER" && (
+        {isCounter && (
           <div className="receipt__row">
-            <span>Policy maximum</span>
-            <span className="num">{product.max_discount_pct}%</span>
+            <span>Your requested price</span>
+            <span className="num">{inr(requestedUnitPrice)}</span>
           </div>
         )}
+
+        {isCounter ? (
+          <div className="negotiate__grid">
+            <div className="negotiate__stat">
+              <span>Your requested discount</span>
+              <b>{requestedDiscountPct}%</b>
+            </div>
+            <div className="negotiate__stat">
+              <span>Policy maximum</span>
+              <b>{product.max_discount_pct}%</b>
+            </div>
+          </div>
+        ) : (
+          <div className="receipt__row">
+            <span>Requested discount</span>
+            <span className="num">{requestedDiscountPct}%</span>
+          </div>
+        )}
+
         {finalUnit != null && (
           <div className="receipt__row">
             <span>Final price</span>
