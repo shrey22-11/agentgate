@@ -1,7 +1,7 @@
 import type { Decision } from "../api";
 import { Icon, cx, inr } from "../ui";
 
-const VERDICT_ICON: Record<string, string> = {
+export const VERDICT_ICON: Record<string, string> = {
   ALLOW: "shield",
   DENY: "close",
   NEEDS_APPROVAL: "gavel",

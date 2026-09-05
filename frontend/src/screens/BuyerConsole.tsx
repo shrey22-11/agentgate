@@ -21,7 +21,7 @@ import {
   useToast,
 } from "../ui";
 import { DecisionReveal } from "../components/DecisionReveal";
-import { BuyerTranscript } from "../components/BuyerTranscript";
+import { AgentActivity } from "../components/AgentActivity";
 import { PurchaseSummary } from "../components/PurchaseSummary";
 import { PaymentAction } from "../components/PaymentAction";
 import { AgentSelect, ProductSelect } from "../components/Selectors";
@@ -341,23 +341,7 @@ export function BuyerConsole({ onNavigate }: { onNavigate: (v: "approvals") => v
             </div>
           )}
 
-          {run && (
-            <div className="card card--pad stack">
-              <div className="spread">
-                <div className="card-title" style={{ margin: 0 }}>Agent run</div>
-                <span className={cx("badge", toneClass(run.outcome))}>
-                  <span className="badge__dot" />{titleCase(run.outcome)}
-                </span>
-              </div>
-              <div className="row">
-                <span className="chip">{run.steps_used} model steps</span>
-                <span className="chip">{run.request_action_count} request_action calls</span>
-              </div>
-              {run.summary && <p style={{ fontSize: 13, margin: 0, color: "var(--text-1)" }}>{run.summary}</p>}
-              <hr className="hr" />
-              <BuyerTranscript entries={run.transcript} />
-            </div>
-          )}
+          {run && <AgentActivity run={run} />}
 
           {!busy && !decision && !run && !err && (
             <div className="card card--pad">
@@ -374,9 +358,4 @@ export function BuyerConsole({ onNavigate }: { onNavigate: (v: "approvals") => v
       </div>
     </div>
   );
-}
-
-function toneClass(outcome: string) {
-  const t = OUTCOME_TONE[outcome];
-  return t === "ok" ? "v-allow" : t === "bad" ? "v-deny" : t === "warn" ? "v-needs_approval" : "v-counter_offer";
 }

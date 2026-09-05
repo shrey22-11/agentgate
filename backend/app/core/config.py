@@ -101,6 +101,32 @@ class Settings(BaseSettings):
     ai_buyer_max_steps: int = Field(default=8, ge=1, le=30)
     ai_buyer_max_request_actions: int = Field(default=3, ge=1, le=10)
 
+    # --- AI fallback provider (optional, OFF by default) ---
+    # Gemini stays the unconditional default/primary provider. This adds one
+    # OPTIONAL second call path — Llama via Groq — used only when a live
+    # Gemini call fails with a transient provider/availability error (HTTP
+    # 429/503/504, or a timeout) and this is explicitly turned on. It is not
+    # a replacement for Gemini. See app.ai.client.FallbackParserClient /
+    # FallbackBuyerClient and app.ai.groq_client. Deliberately NOT validated
+    # like gemini_api_key/razorpay_* above: a missing/blank key here must not
+    # fail application startup — it degrades to "fallback unavailable" at
+    # call time (a logged warning), so an optional secondary provider can
+    # never take the app down. See _check_ai_credentials for the contrast.
+    ai_fallback_enabled: bool = Field(default=False)
+    ai_fallback_provider: str = Field(
+        default="groq", description="Only 'groq' is currently implemented."
+    )
+    groq_api_key: str = Field(
+        default="",
+        description="console.groq.com API key. Used only for the optional "
+        "fallback path — never as a primary provider.",
+    )
+    ai_fallback_model: str = Field(
+        default="openai/gpt-oss-20b",
+        description="Groq's current production (non-preview) Llama model "
+        "with tool-calling support.",
+    )
+
     # --- Razorpay (test mode only, per Section I) ---
     # The app boots without real credentials as long as execution is disabled.
     # When razorpay_enabled is true the three secrets must be real (not blank,

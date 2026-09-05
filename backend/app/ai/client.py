@@ -1,5 +1,7 @@
 """
-The AI boundary. The Google Gemini SDK (`google-genai`) is imported only here.
+The AI boundary for the primary provider. The Google Gemini SDK
+(`google-genai`) is imported only here — the optional fallback provider's SDK
+is imported only in the sibling module `app.ai.groq_client` (see below).
 
 `AIParserClient` is a one-method async protocol. `GeminiParserClient` calls the
 real Gemini API with a JSON-schema-constrained request and translates *every*
@@ -16,6 +18,14 @@ Cost protection: one attempt per call (no SDK retries), automatic function
 calling disabled (the SDK never loops tools on its own — the bounded loop in
 `app.ai.buyer` does), thinking disabled, and small `max_output_tokens`.
 Migrated from Anthropic Claude 2026-09-04 (see docs/architecture-freeze.md).
+
+Optional fallback (2026-09-05): when `AI_FALLBACK_ENABLED=true`, `get_ai_client`
+/ `get_ai_buyer_client` return a `FallbackParserClient` / `FallbackBuyerClient`
+that try Gemini first, always, and fall over to Llama via Groq — imported only
+in the sibling module `app.ai.groq_client` — for exactly one attempt, and only
+when Gemini's failure is a transient provider outage (`AITransientUnavailableError`,
+below). Disabled (the default), the two factories return exactly what they
+always have; Groq is never imported, constructed, or called.
 """
 from __future__ import annotations
 
@@ -25,12 +35,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
+import httpx
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from pydantic import ValidationError
 
 from app.ai.schemas import ParsedIntent
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 _log = logging.getLogger("agentgate.ai")
 
@@ -72,6 +84,42 @@ def _safe_provider_error(exc: BaseException) -> str:
     if text:
         parts.append(text)
     return " | ".join(parts)
+
+
+def _is_transient_provider_error(exc: BaseException) -> bool:
+    """
+    True only for the narrow set of Gemini failures Section 11 of the
+    fallback spec names as qualifying for AI_FALLBACK_ENABLED: HTTP 429, HTTP
+    503, HTTP 504 (any 5xx — `google.genai.errors.ServerError` covers the
+    whole range), or a client-side timeout. Verified against the actual
+    pinned `google-genai==1.75.0` source (`google/genai/errors.py`): the SDK
+    raises `ClientError` for 4xx and `ServerError` for 5xx, both carrying a
+    real `.code` int — not guessed from a tutorial.
+
+    Everything else — invalid arguments, auth failures, a response that fails
+    ParsedIntent validation, an empty response — returns False and is left to
+    fail exactly as it always has. This function decides *fallback
+    eligibility only*; it never decides a verdict, a price, or anything the
+    policy engine owns.
+    """
+    if isinstance(exc, genai_errors.ServerError):  # any 5xx, incl. 503 / 504
+        return True
+    if isinstance(exc, genai_errors.ClientError) and getattr(exc, "code", None) == 429:
+        return True
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        return True
+    return False
+
+
+def _transient_reason(exc: BaseException) -> str:
+    """A short, log-safe code for *why* a call was treated as transient —
+    cosmetic only (see _is_transient_provider_error for the actual gate)."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return f"HTTP_{code}"
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        return "TIMEOUT"
+    return type(exc).__name__
 
 
 def _strip_code_fences(text: str) -> str:
@@ -123,6 +171,23 @@ class AIUnavailableError(AIError):
     The provider call failed, timed out, or returned nothing parseable.
     NOT a subclass relationship with AIDisabledError on purpose — "disabled" is
     configuration, not an outage, and the two are handled differently.
+    """
+
+
+class AITransientUnavailableError(AIUnavailableError):
+    """
+    A narrower AIUnavailableError: the Gemini call failed with what the
+    architecture treats as a transient provider/infrastructure outage — HTTP
+    429/503/504 or a client-side timeout — as opposed to a bad request,
+    invalid/unparseable output, or a config problem. This is the ONLY signal
+    `FallbackParserClient` / `FallbackBuyerClient` (below) use to decide
+    whether a call qualifies for the optional Groq fallback.
+
+    Deliberately a SUBCLASS of AIUnavailableError, not a sibling: every
+    existing `except AIUnavailableError` in app.ai.parser / app.ai.buyer (and
+    every existing test) keeps matching it unchanged, so raising this instead
+    of the base class changes nothing when AI_FALLBACK_ENABLED is false — the
+    fail-closed behaviour is byte-for-byte identical either way.
     """
 
 
@@ -225,7 +290,12 @@ class GeminiParserClient:
                 "fields=%d, thinking_config=omitted): %s",
                 self._model, len(_PARSE_RESPONSE_SCHEMA.get("properties", {})), detail,
             )
-            raise AIUnavailableError(f"gemini call failed: {detail}") from exc
+            error_cls = (
+                AITransientUnavailableError
+                if _is_transient_provider_error(exc)
+                else AIUnavailableError
+            )
+            raise error_cls(f"gemini call failed: {detail}") from exc
 
         return _coerce_parsed_intent(response)
 
@@ -277,16 +347,82 @@ class DisabledAIClient:
         raise AIDisabledError("AI_ENABLED is false")
 
 
+class FallbackParserClient:
+    """
+    Optional composition of the primary (Gemini) parser client with a
+    secondary (Groq) one. Returned by `get_ai_client` ONLY when
+    AI_FALLBACK_ENABLED is true — disabled, callers get a bare
+    GeminiParserClient exactly as before, and this class is never
+    constructed.
+
+    Gemini is tried first, always. Groq is attempted at most once, and only
+    when Gemini's failure is an AITransientUnavailableError — a genuine
+    validation/parsing/business failure (plain AIUnavailableError) propagates
+    straight through, unattempted, exactly as it always has. If `secondary`
+    is None (AI_FALLBACK_ENABLED=true but no usable Groq key), a transient
+    Gemini failure also just propagates — "fallback configured but
+    unusable" degrades to "no fallback", never to a crash.
+    """
+
+    def __init__(self, *, primary: AIParserClient, secondary: AIParserClient | None) -> None:
+        self._primary = primary
+        self._secondary = secondary
+
+    async def parse_intent(self, *, raw_input: str) -> ParsedIntent:
+        try:
+            return await self._primary.parse_intent(raw_input=raw_input)
+        except AITransientUnavailableError as exc:
+            if self._secondary is None:
+                _log.warning(
+                    "ai fallback provider=groq reason=%s skipped=no_secondary_configured",
+                    _transient_reason(exc),
+                )
+                raise
+            _log.warning("ai fallback provider=groq reason=%s", _transient_reason(exc))
+            return await self._secondary.parse_intent(raw_input=raw_input)
+
+
+def _groq_parser_client(settings: Settings) -> AIParserClient | None:
+    """None when the fallback cannot actually be used (unsupported provider
+    name, or no usable key) — logged once per construction, never raised:
+    an optional secondary provider must never fail application startup or
+    turn into a 500 on its own (see config.py's AI fallback block)."""
+    if settings.ai_fallback_provider != "groq":
+        _log.warning(
+            "AI_FALLBACK_ENABLED is true but AI_FALLBACK_PROVIDER=%r is not "
+            "supported (only 'groq' is implemented) — continuing without a "
+            "fallback", settings.ai_fallback_provider,
+        )
+        return None
+    key = (settings.groq_api_key or "").strip()
+    if not key or "placeholder" in key.lower():
+        _log.warning(
+            "AI_FALLBACK_ENABLED is true but GROQ_API_KEY is missing or a "
+            "placeholder — continuing without a fallback"
+        )
+        return None
+    from app.ai.groq_client import GroqParserClient  # local: breaks the import cycle
+
+    return GroqParserClient(
+        api_key=key,
+        model=settings.ai_fallback_model,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+    )
+
+
 def get_ai_client() -> AIParserClient:
     """FastAPI dependency. Real client when enabled, hard-stop client when not."""
     settings = get_settings()
     if not settings.ai_enabled:
         return DisabledAIClient()
-    return GeminiParserClient(
+    primary: AIParserClient = GeminiParserClient(
         api_key=settings.gemini_api_key,
         model=settings.ai_model,
         timeout_seconds=settings.ai_request_timeout_seconds,
     )
+    if not settings.ai_fallback_enabled:
+        return primary
+    return FallbackParserClient(primary=primary, secondary=_groq_parser_client(settings))
 
 
 # =====================================================================
@@ -451,6 +587,39 @@ def _to_gemini_contents(messages: list[dict]) -> list[genai_types.Content]:
     return contents
 
 
+def _assistant_content_to_neutral_blocks(content: Any) -> list[dict]:
+    """
+    Project one assistant turn's `content` into the small provider-neutral
+    `{"type": "text"|"tool_use", ...}` block shape — the ONLY representation
+    ever handed to a non-Gemini provider (see app.ai.groq_client).
+
+    `content` is one of the two shapes `_to_gemini_contents` above already
+    reads: a list of raw `genai_types.Part` objects (a real Gemini turn) or
+    already-neutral dict blocks (a scripted/fake client, or a turn a prior
+    fallback step produced via Groq). Either way, only the semantic content a
+    buyer-agent turn carries — its text and its (name, args) tool calls — is
+    extracted. Gemini's opaque `thought_signature` is Gemini-internal
+    plumbing for Gemini's own multi-step function calling; it carries no
+    meaning another provider could use, so it is deliberately dropped here,
+    never forwarded and never fabricated for Groq (see module docstring of
+    app.ai.groq_client).
+    """
+    if not isinstance(content, list):
+        return []
+    if content and all(isinstance(blk, genai_types.Part) for blk in content):
+        blocks: list[dict] = []
+        for i, part in enumerate(content):
+            fn = getattr(part, "function_call", None)
+            if fn is not None and getattr(fn, "name", None):
+                blocks.append(
+                    {"type": "tool_use", "id": fn.id or f"call_{i}", "name": fn.name, "input": dict(fn.args or {})}
+                )
+            elif getattr(part, "text", None):
+                blocks.append({"type": "text", "text": part.text})
+        return blocks
+    return [blk for blk in content if isinstance(blk, dict)]
+
+
 def _gemini_response_to_buyer_step(response: Any) -> BuyerStep:
     candidates = getattr(response, "candidates", None) or []
     parts: list[Any] = []
@@ -529,7 +698,12 @@ class GeminiBuyerClient:
                 "gemini buyer call failed (model=%s, tools=%d, thinking_config=omitted): %s",
                 self._model, len(tools), detail,
             )
-            raise AIUnavailableError(f"gemini buyer call failed: {detail}") from exc
+            error_cls = (
+                AITransientUnavailableError
+                if _is_transient_provider_error(exc)
+                else AIUnavailableError
+            )
+            raise error_cls(f"gemini buyer call failed: {detail}") from exc
 
         return _gemini_response_to_buyer_step(response)
 
@@ -539,12 +713,88 @@ class DisabledBuyerClient:
         raise AIDisabledError("AI_ENABLED is false")
 
 
+class FallbackBuyerClient:
+    """
+    Optional composition of the primary (Gemini) buyer client with a
+    secondary (Groq) one. Returned by `get_ai_buyer_client` ONLY when
+    AI_FALLBACK_ENABLED is true — disabled, callers get a bare
+    GeminiBuyerClient exactly as before, and this class is never constructed.
+
+    One run (`app.ai.buyer.run_buyer_agent`'s step loop) reuses the SAME
+    client instance across every step, so `self._use_secondary` naturally
+    scopes "sticky for this run only" — see the flag's own comment for why
+    that, not retrying Gemini every step, is the deliberate choice.
+    """
+
+    def __init__(self, *, primary: AIBuyerClient, secondary: AIBuyerClient | None) -> None:
+        self._primary = primary
+        self._secondary = secondary
+        # Once a run has fallen back to Groq for one step, it stays on Groq
+        # for the rest of that run rather than retrying Gemini next step.
+        # This is what keeps the run's message history single-provider from
+        # the fallback point on: a Groq-produced tool-call turn has no
+        # Gemini thought_signature, and replaying it back into a LATER
+        # Gemini call would risk the exact "Function call is missing a
+        # thought_signature" failure the existing Gemini history handling
+        # was fixed to avoid (see _to_gemini_contents). It is also just what
+        # section 12 of the fallback spec asks for: at most one hop, never a
+        # Gemini -> Groq -> Gemini -> Groq ping-pong.
+        self._use_secondary = False
+
+    async def next_step(self, *, messages: list[dict], tools: list[dict]) -> BuyerStep:
+        if self._use_secondary and self._secondary is not None:
+            return await self._secondary.next_step(messages=messages, tools=tools)
+        try:
+            return await self._primary.next_step(messages=messages, tools=tools)
+        except AITransientUnavailableError as exc:
+            if self._secondary is None:
+                _log.warning(
+                    "ai fallback provider=groq reason=%s skipped=no_secondary_configured",
+                    _transient_reason(exc),
+                )
+                raise
+            _log.warning("ai fallback provider=groq reason=%s", _transient_reason(exc))
+            self._use_secondary = True
+            return await self._secondary.next_step(messages=messages, tools=tools)
+
+
+def _groq_buyer_client(settings: Settings) -> AIBuyerClient | None:
+    """Mirror of _groq_parser_client for the buyer client — see its
+    docstring. Kept as a separate tiny function rather than a shared helper
+    to match this file's existing style (get_ai_client / get_ai_buyer_client
+    already duplicate their settings-reading rather than sharing a helper)."""
+    if settings.ai_fallback_provider != "groq":
+        _log.warning(
+            "AI_FALLBACK_ENABLED is true but AI_FALLBACK_PROVIDER=%r is not "
+            "supported (only 'groq' is implemented) — continuing without a "
+            "fallback", settings.ai_fallback_provider,
+        )
+        return None
+    key = (settings.groq_api_key or "").strip()
+    if not key or "placeholder" in key.lower():
+        _log.warning(
+            "AI_FALLBACK_ENABLED is true but GROQ_API_KEY is missing or a "
+            "placeholder — continuing without a fallback"
+        )
+        return None
+    from app.ai.groq_client import GroqBuyerClient  # local: breaks the import cycle
+
+    return GroqBuyerClient(
+        api_key=key,
+        model=settings.ai_fallback_model,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+    )
+
+
 def get_ai_buyer_client() -> AIBuyerClient:
     settings = get_settings()
     if not settings.ai_enabled:
         return DisabledBuyerClient()
-    return GeminiBuyerClient(
+    primary: AIBuyerClient = GeminiBuyerClient(
         api_key=settings.gemini_api_key,
         model=settings.ai_model,
         timeout_seconds=settings.ai_request_timeout_seconds,
     )
+    if not settings.ai_fallback_enabled:
+        return primary
+    return FallbackBuyerClient(primary=primary, secondary=_groq_buyer_client(settings))

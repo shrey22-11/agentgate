@@ -22,6 +22,13 @@ razorpay==2.0.1
 # (limits set by Google, not guaranteed free). Pinned to 1.75.0: google-genai
 # 2.x requires pydantic>=2.12.5, and this project pins pydantic==2.10.3.
 google-genai==1.75.0
+# groq (official Groq SDK) — OPTIONAL fallback provider only, disabled by
+# default (AI_FALLBACK_ENABLED=false). Used solely so the AI buyer/parser can
+# survive a transient Gemini outage (HTTP 429/503/504/timeout); Gemini stays
+# the default provider. See app/ai/groq_client.py. 1.7.0 declares
+# pydantic<3,>=1.9.0 and httpx<1,>=0.23.0 — both satisfied by this file's
+# existing pins.
+groq==1.7.0
 
 # Testing (Phase 3 onward)
 pytest==8.3.4
